@@ -264,18 +264,93 @@ test('detail task text preserves meaningful leading numbers from the collector',
   assert.equal(app.query('.osb-checklist li div > span').textContent, '429 responses include Retry-After');
 });
 
-test('artifact tabs show literal source text and never interpret executable HTML', async t => {
+test('artifact preview defaults on and source tabs preserve literal text without executing HTML', async t => {
   const app = setup(t, { path: 'requirements/REQ-004' });
   await settled();
-  assert.equal(app.query('.osb-artifact-body pre').textContent, UNSAFE_ARTIFACT);
+  assert.equal(app.button('Preview').getAttribute('aria-pressed'), 'true');
+  assert.equal(app.query('.osb-markdown h1').textContent, 'Proposal');
+  assert.match(app.query('.osb-markdown').textContent, /<script>/);
   assert.equal(app.query('.osb-artifact-body script, .osb-artifact-body img'), null);
   assert.equal(app.dom.window.artifactExecuted, undefined);
+  app.button('Source').focus();
+  app.button('Source').click();
+  assert.equal(app.document.activeElement, app.button('Source'));
+  assert.equal(app.button('Source').getAttribute('aria-pressed'), 'true');
+  assert.equal(app.query('.osb-artifact-source').textContent, UNSAFE_ARTIFACT);
   for (const [label, artifact] of [['Design', 'design'], ['Specification', 'specs'], ['Tasks', 'tasks']]) {
+    app.button(label).focus();
     app.button(label).click();
-    assert.equal(app.query('.osb-artifact-body pre').textContent, `# ${artifact}\nSource text for sample-qa.`);
+    assert.equal(app.document.activeElement, app.button(label));
+    assert.equal(app.query('.osb-artifact-source').textContent, `# ${artifact}\nSource text for sample-qa.`);
     assert.equal(app.button(label).getAttribute('aria-pressed'), 'true');
+    assert.equal(app.button('Source').getAttribute('aria-pressed'), 'true');
   }
+  app.button('Preview').click();
+  assert.equal(app.query('.osb-markdown h1').textContent, 'tasks');
+  app.button('Design').click();
+  assert.equal(app.query('.osb-markdown h1').textContent, 'design');
+  assert.equal(app.button('Preview').getAttribute('aria-pressed'), 'true');
   assert.equal(app.calls.length, 1, 'Artifact inspection must use the read-only snapshot');
+});
+
+test('artifact mode and selected document survive successful and failed refreshes', async t => {
+  const app = setup(t, { path: 'requirements/REQ-002', request: (request, count) => {
+    if (count === 3) throw new Error('Store unavailable');
+    const data = board();
+    data.requirements[1].artifacts[1].content = `# Design revision ${count}\n\nKeep source exact.\n`;
+    return output(data);
+  } });
+  await settled();
+  app.button('Design').click(); app.button('Source').click();
+  app.button('Refresh').click(); await settled();
+  assert.equal(app.query('.osb-artifact-source').textContent, '# Design revision 2\n\nKeep source exact.\n');
+  assert.equal(app.button('Source').getAttribute('aria-pressed'), 'true');
+  assert.equal(app.button('Design').getAttribute('aria-pressed'), 'true');
+  app.button('Preview').click();
+  assert.equal(app.query('.osb-markdown h1').textContent, 'Design revision 2');
+  app.button('Refresh').click(); await settled();
+  assert.equal(app.query('.osb-markdown h1').textContent, 'Design revision 2');
+  assert.equal(app.button('Preview').getAttribute('aria-pressed'), 'true');
+  assert.match(app.query('[role="alert"]').textContent, /Stale snapshot/);
+  assert.equal(app.calls.length, 3);
+});
+
+test('empty artifacts are explained and task preview cannot change progress', async t => {
+  const data = board();
+  data.requirements[1].artifacts[1].content = '';
+  data.requirements[1].artifacts[3].content = '# Tasks\n\n- [x] Ready\n- [ ] Pending\n';
+  const app = setup(t, { path: 'requirements/REQ-002', request: () => output(data) });
+  await settled();
+  app.button('Design').click();
+  assert.equal(app.query('.osb-artifact-message').textContent, 'This artifact is empty.');
+  app.button('Source').click();
+  assert.equal(app.query('.osb-artifact-source').textContent, '');
+  app.button('Tasks').click(); app.button('Preview').click();
+  const checks = app.all('.osb-markdown input[type="checkbox"]');
+  assert.equal(checks.length, 2);
+  assert.ok(checks.every(node => node.disabled));
+  assert.deepEqual(checks.map(node => node.checked), [true, false]);
+  checks[1].click();
+  assert.equal(checks[1].checked, false);
+  assert.equal(app.calls.length, 1);
+});
+
+test('preview rendering failure preserves source access and the requirement details', async t => {
+  const app = setup(t, { path: 'requirements/REQ-002' });
+  await settled();
+  app.button('Source').click();
+  const createElement = app.document.createElement;
+  app.document.createElement = function(tag, ...args) {
+    if (tag === 'h1') throw new Error('Renderer unavailable');
+    return createElement.call(this, tag, ...args);
+  };
+  try { app.button('Preview').click(); } finally { app.document.createElement = createElement; }
+  assert.match(app.query('.osb-artifact-body [role="alert"]').textContent, /could not be previewed/);
+  assert.equal(app.all('.osb-role-panel').length, 4);
+  app.button('View source').click();
+  assert.equal(app.query('.osb-artifact-source').textContent, UNSAFE_ARTIFACT);
+  assert.equal(app.document.activeElement, app.button('Source'));
+  assert.equal(app.calls.length, 1);
 });
 
 test('missing source artifacts and missing role tasks remain visible as warnings', async t => {
@@ -295,7 +370,9 @@ test('missing source artifacts and missing role tasks remain visible as warnings
   assert.match(app.query('.osb-pipeline').textContent, /No tasks assigned to this role/);
   assert.equal(app.query('.osb-completion strong').textContent, '0 of 4 roles complete');
   app.button('Design · missing').click();
-  assert.equal(app.query('.osb-artifact-body pre').textContent, 'This artifact has not been created yet.');
+  assert.equal(app.query('.osb-artifact-message').textContent, 'This artifact has not been created yet.');
+  app.button('Source').click();
+  assert.equal(app.query('.osb-artifact-message').textContent, 'This artifact has not been created yet.');
 });
 
 test('unknown page routes return a visible fallback without querying the store', async t => {

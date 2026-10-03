@@ -10,15 +10,15 @@ const defaultRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "
 export async function validateApp(root = defaultRoot, { dist = false } = {}) {
   const manifest = JSON.parse(await readFile(path.join(root, "canvas-extension.json"), "utf8"));
   if (manifest.schema_version !== 1 || manifest.name !== "openspec-progress"
-      || manifest.version !== "0.5.0" || manifest.entrypoint !== "extension.js"
-      || manifest.display_name !== "OpenSpec board") {
-    throw new Error("Unexpected OpenSpec progress App manifest metadata.");
+      || manifest.version !== "0.6.0" || manifest.entrypoint !== "extension.js"
+      || manifest.display_name !== "OpenSpec Kanban") {
+    throw new Error("Unexpected OpenSpec Kanban App manifest metadata.");
   }
   const pages = manifest.contributes?.pages;
   if (!Array.isArray(pages) || pages.length !== 1 || pages[0].id !== "progress"
-      || pages[0].path !== "/progress" || pages[0].title !== "OpenSpec board"
-      || pages[0].nav_label !== "OpenSpec board") {
-    throw new Error("The manifest must declare only the OpenSpec progress page.");
+      || pages[0].path !== "/progress" || pages[0].title !== "OpenSpec Kanban"
+      || pages[0].nav_label !== "OpenSpec Kanban") {
+    throw new Error("The manifest must declare only the OpenSpec Kanban page.");
   }
   if (dist) {
     const files = await readdir(path.join(root, "dist"), { recursive: true });
@@ -56,7 +56,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
       readFile(path.join(defaultRoot, "dist", "extension.js")),
     ]);
     if (!published.equals(built)) throw new Error("extension.js is stale; run npm run build.");
-    console.log("OpenSpec progress App manifest and browser module are valid.");
+    console.log("OpenSpec Kanban App manifest and browser module are valid.");
   } catch (error) {
     console.error(`App validation failed: ${error.message}`);
     process.exitCode = 1;

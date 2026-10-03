@@ -1,4 +1,4 @@
-# OpenSpec board for OpenHands
+# OpenSpec Kanban for OpenHands
 
 A native **Apps for Agent Canvas** page showing requirement delivery across
 **SA, Frontend, Backend, and QA**. Each requirement has all four roles. A requirement
@@ -12,7 +12,7 @@ as `openspec-store`.
 
 ## Use the board
 
-Open **OpenSpec board** in the OpenHands navigation. The sample directory is
+Open **OpenSpec Kanban** in the OpenHands navigation. The sample directory is
 selected by default. Use **Load store** to choose another directory visible to
 the connected Agent Server.
 
@@ -22,12 +22,30 @@ the connected Agent Server.
 - Search by ID, title, summary, or change name; filter by an unfinished role.
 - Open a card to see all four owners, role checklists, notes, and the original
   proposal, design, specification, and task files.
+- Documents open in **Preview** with formatted Markdown. Select **Source** to
+  inspect the exact text. Your choice stays selected when switching documents
+  or refreshing the requirement.
 - Edit files in the store, then select **Refresh**. Progress and checklists are read-only in the board.
 - In a requirement, expand **Run OpenSpec skill** under SA, Frontend, Backend, or QA to start work through native OpenHands automations.
 
 The six sample requirements are **illustrative fixtures**. Their seeded
 checkboxes demonstrate different stages; they are not claims that the sample
 features have been implemented or tested.
+
+### Preview documents
+
+The artifact viewer supports headings, emphasis, lists, read-only task checkboxes,
+quotes, tables, inline code, and fenced code blocks. Proposal, Design,
+Specification, and Tasks all use the same Preview and Source controls. Paths
+remain visible; empty and missing documents have explicit messages.
+Both views expand to the document's full height, using the page scroll without
+an internal vertical scrollbar.
+
+Raw HTML is shown as text. Images show descriptive text without loading embedded
+resources. Absolute HTTP(S) links open in a separate tab; relative file links and
+other URL schemes remain text. Diagrams and code stay in code blocks. Preview
+does not edit documents, check tasks, or start automations. If formatting fails,
+**View source** keeps the document available.
 
 ## Run a role skill
 
@@ -145,8 +163,9 @@ resolve when the change is present in the selected store.
 ## Develop and verify
 
 Requires Node.js 24 or newer and Python 3.10+ for the local automation bridge.
-Development dependencies are pinned; there are no runtime package dependencies
-and no additional web service.
+Development dependencies are pinned; Marked and the entity decoder are bundled
+into the extension. There are no runtime package downloads or additional web
+services.
 
 ```sh
 npm ci
@@ -161,7 +180,7 @@ The official Canvas validator can also be run on this machine:
 
 ```sh
 node /Users/oka/Desktop/openhands-demo/node_modules/@openhands/extensions/skills/canvas-extension-api/scripts/validate-extension.mjs .
-node /Users/oka/Desktop/openhands-demo/node_modules/@openhands/extensions/skills/canvas-extension-api/scripts/validate-extension.mjs . --dist --marker 'Requirement board'
+node /Users/oka/Desktop/openhands-demo/node_modules/@openhands/extensions/skills/canvas-extension-api/scripts/validate-extension.mjs . --dist --marker 'OpenSpec Kanban'
 ```
 
 The app targets manifest schema **1**, host API **1**, Canvas **1.24.0**, and

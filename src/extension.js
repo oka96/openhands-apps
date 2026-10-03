@@ -1,6 +1,7 @@
 import styles from './styles.css';
 import { loadBoard, validateWorkspace } from './client.js';
 import { mountRoleActions } from './role-actions.js';
+import { renderMarkdown } from './markdown.js';
 
 const DEFAULT_STORE = '/Users/oka/Desktop/openspec-store';
 const STAGES = [
@@ -38,7 +39,7 @@ function stageLabel(stage) { return STAGES.find(([id]) => id === stage)?.[1] || 
 function time(value) { return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
 
 export function activate(host) {
-  if (host.apiVersion !== '1') throw new Error('OpenSpec board requires Canvas host API 1.');
+  if (host.apiVersion !== '1') throw new Error('OpenSpec Kanban requires Canvas host API 1.');
   const base = `/extensions/${encodeURIComponent(host.extension.name)}/progress`;
   const key = `openhands.apps.openspec-progress:v3:${host.backend.id}:store`;
   let workspace = DEFAULT_STORE;
@@ -47,7 +48,7 @@ export function activate(host) {
   const mounts = new Set();
   const unregister = host.registerPage('progress', ({ container, path, navigate }) => {
     let disposed = false, busy = false, generation = 0, snapshot = null;
-    let selectedArtifact = 'proposal';
+    let selectedArtifact = 'proposal', artifactMode = 'preview';
     const actionDisposers = new Set();
     function clearActions() { for (const cleanup of actionDisposers) cleanup(); actionDisposers.clear(); }
     const root = el('section', 'osb-root');
@@ -69,14 +70,14 @@ export function activate(host) {
       return dispose;
     }
     if (host.backend.kind !== 'local') {
-      root.append(el('h1', '', 'OpenSpec board'), el('p', 'osb-alert', 'Connect a local Agent Server to read your OpenSpec store.'));
+      root.append(el('h1', '', 'OpenSpec Kanban'), el('p', 'osb-alert', 'Connect a local Agent Server to read your OpenSpec store.'));
       return dispose;
     }
     const header = el('header', 'osb-header');
     const branding = el('div', 'osb-brand');
     branding.append(el('div', 'osb-symbol', 'OS'));
     const title = el('div');
-    title.append(el('p', 'osb-eyebrow', 'OPENSPEC / DELIVERY WORKSPACE'), el('h1', '', 'Requirement board'));
+    title.append(el('p', 'osb-eyebrow', 'OPENSPEC / DELIVERY WORKSPACE'), el('h1', '', 'OpenSpec Kanban'));
     branding.append(title);
     const actions = el('div', 'osb-header-actions');
     const refresh = button('↻  Refresh', 'osb-button osb-primary', () => refreshData());
@@ -248,25 +249,56 @@ export function activate(host) {
       const artifactSection = el('section', 'osb-artifacts');
       const artifactHeader = el('div', 'osb-artifact-heading'); artifactHeader.append(el('h3', '', 'Source artifacts'), el('code', '', `openspec/changes/${requirement.change}`));
       const tabs = el('div', 'osb-artifact-tabs'); tabs.setAttribute('role', 'group'); tabs.setAttribute('aria-label', 'Source artifact');
+      const toolbar = el('div', 'osb-artifact-toolbar');
+      const modes = el('div', 'osb-views osb-artifact-modes'); modes.setAttribute('role', 'group'); modes.setAttribute('aria-label', 'Artifact display');
       const body = el('div', 'osb-artifact-body');
-      function drawArtifact() {
-        tabs.replaceChildren(); body.replaceChildren();
-        for (const artifact of requirement.artifacts) {
-          const control = button(`${ARTIFACTS[artifact.id]}${artifact.status === 'missing' ? ' · missing' : ''}`, selectedArtifact === artifact.id ? 'selected' : '', () => { selectedArtifact = artifact.id; drawArtifact(); });
-          control.setAttribute('aria-pressed', String(selectedArtifact === artifact.id)); tabs.append(control);
-        }
-        const artifact = requirement.artifacts.find(a => a.id === selectedArtifact) || requirement.artifacts[0];
-        if (!artifact) return;
-        body.append(el('div', 'osb-artifact-path', artifact.path), el('pre', '', artifact.status === 'missing' ? 'This artifact has not been created yet.' : artifact.content));
+      const modeButtons = new Map();
+      for (const [mode, label] of [['preview', 'Preview'], ['source', 'Source']]) {
+        const control = button(label, 'osb-view', () => { artifactMode = mode; drawArtifact(); });
+        modeButtons.set(mode, control); modes.append(control);
       }
-      artifactSection.append(artifactHeader, tabs, body); content.append(artifactSection); drawArtifact();
+      const artifactButtons = new Map();
+      for (const artifact of requirement.artifacts) {
+        const control = button(`${ARTIFACTS[artifact.id]}${artifact.status === 'missing' ? ' · missing' : ''}`, '', () => { selectedArtifact = artifact.id; drawArtifact(); });
+        artifactButtons.set(artifact.id, control); tabs.append(control);
+      }
+      function drawArtifact() {
+        const artifact = requirement.artifacts.find(a => a.id === selectedArtifact) || requirement.artifacts[0];
+        body.replaceChildren();
+        for (const [id, control] of artifactButtons) {
+          control.classList.toggle('selected', id === artifact?.id);
+          control.setAttribute('aria-pressed', String(id === artifact?.id));
+        }
+        for (const [mode, control] of modeButtons) {
+          control.classList.toggle('selected', artifactMode === mode);
+          control.setAttribute('aria-pressed', String(artifactMode === mode));
+        }
+        if (!artifact) { body.append(el('p', 'osb-artifact-message', 'No artifacts are available.')); return; }
+        body.append(el('div', 'osb-artifact-path', artifact.path));
+        if (artifact.status === 'missing') { body.append(el('p', 'osb-artifact-message', 'This artifact has not been created yet.')); return; }
+        if (!artifact.content.trim()) body.append(el('p', 'osb-artifact-message', 'This artifact is empty.'));
+        if (artifactMode === 'source') { body.append(el('pre', 'osb-artifact-source', artifact.content)); return; }
+        if (!artifact.content.trim()) return;
+        const preview = el('div', 'osb-markdown');
+        preview.setAttribute('role', 'region'); preview.setAttribute('aria-label', `${ARTIFACTS[artifact.id]} preview`); preview.tabIndex = 0;
+        try {
+          preview.append(renderMarkdown(artifact.content)); body.append(preview);
+        } catch {
+          const fallback = el('div', 'osb-artifact-message');
+          const message = el('p', '', 'This Markdown could not be previewed. You can still read its source.'); message.setAttribute('role', 'alert');
+          fallback.append(message, button('View source', 'osb-button', () => { artifactMode = 'source'; drawArtifact(); modeButtons.get('source').focus(); }));
+          body.append(fallback);
+        }
+      }
+      toolbar.append(tabs, modes);
+      artifactSection.append(artifactHeader, toolbar, body); content.append(artifactSection); drawArtifact();
     }
     async function refreshData() {
       if (busy || disposed) return;
       busy = true; const current = ++generation;
       refresh.disabled = load.disabled = storeInput.disabled = true; refresh.textContent = 'Refreshing…'; root.setAttribute('aria-busy', 'true');
       notice.className = 'osb-notice'; notice.setAttribute('role', 'status'); notice.textContent = 'Reading requirements and role checklists…';
-      if (!snapshot) content.replaceChildren(el('div', 'osb-loading', 'Loading your requirement board…'));
+      if (!snapshot) content.replaceChildren(el('div', 'osb-loading', 'Loading OpenSpec Kanban…'));
       try {
         const data = await loadBoard(host, workspace);
         if (disposed || current !== generation) return;

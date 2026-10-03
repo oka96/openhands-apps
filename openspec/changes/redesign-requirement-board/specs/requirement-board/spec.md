@@ -33,7 +33,7 @@ The App SHALL show requirements in Backlog, SA, Implementation, QA, Blocked, and
 - **THEN** the App shows an empty state and a way to clear the filters
 
 ### Requirement: Source inspection
-The App SHALL provide requirement detail routes showing role owners, task checklists, completion counts, notes and proposal, design, specification and task artifact contents rendered as text.
+The App SHALL provide requirement detail routes showing role owners, task checklists, completion counts, notes and proposal, design, specification and task artifact contents with formatted Markdown preview and exact source text access.
 
 #### Scenario: Open a requirement
 - **WHEN** a user selects a card and reloads its detail route
@@ -41,7 +41,7 @@ The App SHALL provide requirement detail routes showing role owners, task checkl
 
 #### Scenario: Malicious Markdown
 - **WHEN** an artifact includes HTML or script syntax
-- **THEN** it is displayed as text and executes no script
+- **THEN** raw HTML and script syntax is displayed as inert text in Preview and Source and executes no script
 
 ### Requirement: Reliable read-only refresh
 The App SHALL read the selected store without changing its files or starting agents, SHALL support manual refresh, and SHALL label retained data stale after a refresh fails.
@@ -59,7 +59,7 @@ The App SHALL retain the `openspec-progress` identity, load the requested sample
 
 #### Scenario: Local installation
 - **WHEN** the validated App is installed and enabled in Canvas
-- **THEN** OpenSpec board appears in navigation and renders the sample requirements
+- **THEN** OpenSpec Kanban appears in navigation and renders the sample requirements
 
 #### Scenario: Dispose while loading
 - **WHEN** the user leaves the App before a request completes
