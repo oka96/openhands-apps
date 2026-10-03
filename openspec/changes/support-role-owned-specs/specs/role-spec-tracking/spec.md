@@ -33,14 +33,35 @@ Each spec SHALL have its own source specification and task checklist. Task IDs S
 - **THEN** the board reports that inconsistency instead of omitting the work from progress
 
 ### Requirement: Source and role spec navigation
-Kanban SHALL show each role's named specs and their progress, support searching by spec ID or title, and allow selection of each spec's specification and tasks. Shared requirement proposal and design SHALL remain accessible. Preview and exact Source modes SHALL render full height and preserve their selection during refresh.
+Kanban SHALL show each role's named specs and their progress, support searching by spec ID or title, and allow selection of each spec's specification and tasks. Shared requirement proposal and design SHALL remain accessible. Preview and exact Source modes SHALL render full height and preserve their selection during refresh. Source artifacts SHALL contain a single inline skill form whose role and target come from the Role spec dropdown, without separate role disclosures or another Spec selector.
 
 #### Scenario: Inspect sibling specifications
 - **WHEN** a user selects the second Frontend spec on a requirement
 - **THEN** its own specification and task source are displayed, with the selected ID visible and no mixing with sibling content
 
+#### Scenario: Run skills beside source artifacts
+- **WHEN** a user opens a requirement's Source artifacts section
+- **THEN** Role spec selects both the displayed artifact and the role/spec targeted by the single visible skill form
+- **AND** selecting a spec, skill or artifact does not dispatch an agent; shared document tabs and Preview/Source changes preserve the draft form
+
+#### Scenario: Skill remains responsive after prior work
+- **WHEN** connection/status checks are in progress or a saved prior run exists
+- **THEN** selecting Propose, Update or Apply immediately updates the relevant fields and help, while prior run links and duplicate/uncertain-submission protection remain intact
+
+#### Scenario: Propose for an empty role
+- **WHEN** a role has no specs
+- **THEN** its New spec entry in Role spec exposes Propose for that role, shared artifacts remain readable, and switching to an existing spec restores its Specification and Tasks tabs
+
 ### Requirement: Spec-scoped automation
-Propose SHALL add a named spec under the selected requirement and role. Update and Apply SHALL target one registered spec. Requests SHALL bind requirement, role, spec, stage and change before starting. Planning SHALL preserve sibling specs and shared context; Apply SHALL only change selected-spec completion markers and verified implementation work. Conversations SHALL include spec tags and use `[Role] <spec ID>` names.
+Propose SHALL add a named spec under the selected requirement and role. Update and Apply SHALL target one registered spec. Requests SHALL bind requirement, role, spec, stage and change before starting. Planning SHALL preserve sibling specs and shared context; Apply SHALL only change selected-spec completion markers and verified implementation work. Conversations SHALL use the plain spec ID as their title, saved before agent execution with automatic naming disabled. Tags SHALL retain requirement, role, stage, spec and automation origin, and SHALL omit `openspecchange` and `openspecskill`.
+
+#### Scenario: Plain title and reduced tags
+- **WHEN** any role starts Propose, Update, or Apply for a spec
+- **THEN** the title is that spec ID without a bracketed role prefix, and the tags retain requirement, role, openspecstage, openspecspec, automationrunid and automationtrigger only
+
+#### Scenario: Normalize existing conversation metadata
+- **WHEN** existing conversations have a leading bracketed role prefix or either obsolete tag key
+- **THEN** the role prefix and the openspecchange and openspecskill keys are removed, preserving the rest of the title, other tags, conversation messages and run history
 
 #### Scenario: Add another Backend spec
 - **WHEN** Backend Propose supplies a new feature slug and prompt for REQ-002

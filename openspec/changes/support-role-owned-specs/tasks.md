@@ -19,3 +19,19 @@
 
 - [x] 4.1 Run app, store and automation checks plus official Canvas validators; resolve failures and record evidence against every acceptance scenario.
 - [x] 4.2 Install the updated OpenSpec Kanban and reconnect the existing twelve definitions without starting agents; verify live multi-spec navigation and REQ-002 stage, capture browser evidence and complete the goal audit.
+
+## 5. Conversation metadata simplification
+
+- [x] 5.1 Use plain spec IDs as conversation titles and omit openspecchange/openspecskill tags; update documentation, test all role/skill combinations and legacy tags, and regenerate the twelve bundles.
+- [x] 5.2 Normalize existing conversation titles/tags, reconnect the updated automation definitions without starting agents, and verify the saved metadata and live UI.
+
+## 6. Skills with source artifacts
+
+- [x] 6.1 Relocate all four role skill panels into Source artifacts with visible role labels and responsive layout; update usage docs and existing layout assertions while preserving dispatch and preview behavior.
+- [x] 6.2 Build and validate the app, update the installed extension, and verify the combined section in the live browser without starting agent work.
+
+## 7. Unified spec and skill selection
+
+- [x] 7.1 Replace role disclosures with one inline form bound to Role spec; preserve no-spec Propose, shared artifact navigation, draft lifecycle, and correct role/spec dispatch targeting.
+- [x] 7.2 Keep Skill responsive during read-only checks and with prior run history, retain duplicate guards, and test saved/uncertain and late-response cases.
+- [x] 7.3 Validate and install the app, verify live Role spec and Skill changes without dispatching, and update usage and verification evidence.

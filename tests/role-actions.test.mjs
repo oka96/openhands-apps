@@ -98,6 +98,8 @@ function setup(t, options = {}) {
     const dispose = mountRoleActions({ host, container, navigate: href => navigation.push(href),
       workspace: overrides.store || options.store || STORE,
       requirement: overrides.requirement || options.requirement || REQUIREMENT,
+      specId: Object.hasOwn(overrides, 'specId') ? overrides.specId : Object.hasOwn(options, 'specId') ? options.specId
+        : `${PREFIXES[activeRole]}-${(overrides.requirement || options.requirement || REQUIREMENT).id}-first`,
       role: { id: activeRole, label: activeRole, specs: (overrides.requirement || options.requirement || REQUIREMENT).specs?.filter(spec => spec.role === activeRole).map(spec => spec.id), tasks: [], total: 0, complete: 0, state: 'backlog' } });
     disposers.add(dispose); currentDispose = dispose;
     return dispose;
@@ -114,9 +116,8 @@ function setup(t, options = {}) {
   const query = selector => container.querySelector(selector);
   const button = name => [...container.querySelectorAll('button')].find(node => node.textContent === name);
   return { dom, container, host, requests, actions, navigation, mount, dispose, query, button,
-    async open() {
-      const panel = query('details'); panel.open = true;
-      panel.dispatchEvent(new dom.window.Event('toggle'));
+    async ready() {
+      const panel = query('.osb-role-actions');
       await eventually(() => panel.getAttribute('aria-busy') === 'false', 'connection probe');
     },
     select(stage) {
@@ -133,33 +134,33 @@ function setup(t, options = {}) {
   };
 }
 
-test('role controls are inert until opened, default to Apply, and probe without connecting or dispatching', async t => {
+test('inline role controls default to Apply and automatically probe without connecting or dispatching', async t => {
   const app = setup(t);
-  await settled();
-  assert.equal(app.requests.length, 0);
-  assert.equal(app.query('summary').getAttribute('aria-label'), 'Run OpenSpec skill for SA');
+  assert.equal(app.query('details, summary'), null);
+  assert.equal(app.query('.osb-role-actions').getAttribute('aria-label'), 'Run OpenSpec skill for SA');
+  assert.equal(app.query('.osb-role-actions-body').firstElementChild, app.query('form'));
+  assert.equal(app.container.querySelectorAll('select').length, 1, 'Role spec is supplied by the parent');
   assert.equal(app.query('[aria-label="SA skill"]').value, 'apply');
   assert.equal(app.query('[aria-label="SA new feature name"]').parentElement.hidden, true);
   assert.equal(app.query('[aria-label="SA prompt"]').required, false);
   assert.equal(app.button('Run SA Apply').disabled, true);
-  await app.open();
+  await app.ready();
   assert.deepEqual(app.actions.map(item => item.action), ['probe']);
   assert.equal(app.button('Run SA Apply').disabled, false);
   assert.match(app.container.textContent, /Code project:.*openhands-demo/);
   assert.match(app.container.textContent, /Spec store:.*openspec-store/);
-  app.query('details').open = false;
-  await app.open();
+  await app.ready();
   assert.deepEqual(app.actions.map(item => item.action), ['probe']);
 });
 
 test('Connect installs explicitly while Check connection remains read-only', async t => {
   const app = setup(t, { ready: false });
-  await app.open();
+  await app.ready();
   assert.equal(app.button('Run SA Apply').disabled, true);
   app.button('Connect automations').click();
   await eventually(() => !app.button('Run SA Apply').disabled);
   app.button('Check connection').click();
-  await eventually(() => app.actions.length === 3 && app.query('details').getAttribute('aria-busy') === 'false');
+  await eventually(() => app.actions.length === 3 && app.query('.osb-role-actions').getAttribute('aria-busy') === 'false');
   assert.deepEqual(app.actions.map(item => item.action), ['probe', 'setup', 'probe']);
   assert.equal(app.dispatched().length, 0);
 });
@@ -167,7 +168,7 @@ test('Connect installs explicitly while Check connection remains read-only', asy
 for (const role of ROLES) for (const stage of STAGES) {
   test(`${role} ${stage} submits exactly its selected role, skill, requirement and single prompt`, async t => {
     const app = setup(t, { role });
-    await app.open(); app.select(stage);
+    await app.ready(); app.select(stage);
     const prompt = stage === 'apply' ? '' : `Refine 标签 for ${role}; keep $(commands), "quotes" and \`text\` as data.`;
     app.fill(prompt); app.submit();
     await eventually(() => app.query('a')?.textContent.includes('Open automation run'));
@@ -192,7 +193,7 @@ for (const role of ROLES) for (const stage of STAGES) {
 
 test('invalid Propose and Update inputs cannot dispatch; switching skills updates required inputs and boundaries', async t => {
   const app = setup(t);
-  await app.open();
+  await app.ready();
   for (const [stage, prompt, change] of [
     ['propose', '', 'new-change'], ['propose', 'Concrete work', ''], ['propose', 'Concrete work', '../outside'],
     ['propose', 'Concrete work', 'first'], ['propose', 'x'.repeat(10001), 'new-change'],
@@ -215,7 +216,7 @@ test('a missing advertised service or mismatched store cannot dispatch work', as
   for (const options of [{ advertised: false }, { connectionStore: '/another/store' }]) {
     await t.test(JSON.stringify(options), async child => {
       const app = setup(child, options);
-      await app.open(); app.submit(); await settled();
+      await app.ready(); app.submit(); await settled();
       assert.equal(app.button('Run SA Apply').disabled, true);
       assert.equal(app.dispatched().length, 0);
       if (options.advertised === false) assert.equal(app.actions.length, 0);
@@ -227,7 +228,7 @@ test('a missing advertised service or mismatched store cannot dispatch work', as
 test('duplicate submissions are suppressed while pending and after the returned run', async t => {
   const pending = deferred();
   const app = setup(t, { action: payload => payload.action === 'dispatch' ? pending.promise : undefined });
-  await app.open(); app.fill('Implement the selected role only.'); app.submit(); app.submit();
+  await app.ready(); app.fill('Implement the selected role only.'); app.submit(); app.submit();
   await eventually(() => app.dispatched().length === 1);
   assert.equal(app.query('select').disabled, true);
   assert.equal(app.query('textarea').disabled, true);
@@ -242,12 +243,12 @@ test('uncertain dispatch retains its request reference through remount and never
   const app = setup(t, { action: payload => {
     if (payload.action === 'dispatch') throw new Error('connection lost');
   } });
-  await app.open(); app.submit();
+  await app.ready(); app.submit();
   await eventually(() => app.query('a')?.textContent.includes('Inspect automation history'));
   const request = app.dispatched()[0].input;
   assert.match(app.container.textContent, /may have started/);
   assert.ok(app.container.textContent.includes(request.request_id));
-  app.dispose(); app.mount(); await app.open(); app.submit(); await settled();
+  app.dispose(); app.mount(); await app.ready(); app.submit(); await settled();
   assert.equal(app.dispatched().length, 1);
   assert.equal(app.button('Run SA Apply').disabled, true);
   app.query('a').click();
@@ -259,13 +260,13 @@ test('uncertain dispatch retains its request reference through remount and never
 
 test('saved run references isolate backend, store, requirement and role and preserve the original run on return', async t => {
   const app = setup(t);
-  await app.open(); app.submit(); await eventually(() => app.query('a'));
+  await app.ready(); app.submit(); await eventually(() => app.query('a'));
   for (const overrides of [{ backend: 'other-backend' }, { store: '/other/store' },
     { role: 'Frontend' }, { requirement: { ...REQUIREMENT, id: 'REQ-005' } }]) {
-    app.dispose(); app.mount(overrides); await app.open();
+    app.dispose(); app.mount(overrides); await app.ready();
     assert.equal(app.query('a'), null, `No prior run leaked into ${JSON.stringify(overrides)}`);
   }
-  app.dispose(); app.mount(); await app.open();
+  app.dispose(); app.mount(); await app.ready();
   assert.equal(app.query('a')?.getAttribute('href'), `/automations/${AUTOMATIONS[2].id}?run=${RUN_ID}`);
   assert.equal(app.dispatched().length, 1);
   assert.equal(app.query('textarea').value, '', 'Prompt text is not restored from storage');
@@ -277,10 +278,10 @@ test('a disposed dispatch response cannot replace a newer request saved by the r
   const app = setup(t, { action: payload => {
     if (payload.action === 'dispatch' && ++dispatchCount === 1) return pending.promise;
   } });
-  await app.open(); app.submit();
+  await app.ready(); app.submit();
   await eventually(() => app.dispatched().length === 1);
   const earlier = app.dispatched()[0].input;
-  app.dispose(); app.mount(); await app.open();
+  app.dispose(); app.mount(); await app.ready();
   app.button('Start another run').click(); app.submit();
   await eventually(() => app.dispatched().length === 2 && app.query('a')?.textContent.includes('Open automation run'));
   const newer = app.dispatched()[1].input;
@@ -290,7 +291,7 @@ test('a disposed dispatch response cannot replace a newer request saved by the r
     request_id: earlier.request_id, run_id: '661994fa-ec3a-4f31-9749-6dd2792ff8ea' }));
   await settled(); await settled();
   assert.deepEqual(app.stored(), before, 'Late results preserve the newer persisted reference');
-  app.dispose(); app.mount(); await app.open();
+  app.dispose(); app.mount(); await app.ready();
   assert.ok(app.container.textContent.includes(newer.request_id));
   assert.ok(!app.container.textContent.includes(earlier.request_id));
   assert.equal(app.query('a').getAttribute('href'), `/automations/${newer.automation_id}?run=${RUN_ID}`);
@@ -300,7 +301,7 @@ test('a disposed dispatch response cannot replace a newer request saved by the r
 test('status refresh exposes native run and conversation links without changing requirement progress or dispatching', async t => {
   const app = setup(t);
   const before = structuredClone(REQUIREMENT);
-  await app.open(); app.submit(); await eventually(() => app.button('Refresh run status'));
+  await app.ready(); app.submit(); await eventually(() => app.button('Refresh run status'));
   app.button('Refresh run status').click();
   await eventually(() => app.query('.osb-run-status'));
   assert.match(app.query('.osb-run-status').textContent, /completed/);
@@ -318,7 +319,7 @@ test('failed run displays literal error evidence and missing conversation does n
     version: 1, kind: 'status', automation_id: payload.input.automation_id, run_id: payload.input.run_id,
     status: 'FAILED', error: '<img src=x onerror=alert(1)> Missing approval.', conversation_id: null,
   }) : undefined });
-  await app.open(); app.submit(); await eventually(() => app.button('Refresh run status'));
+  await app.ready(); app.submit(); await eventually(() => app.button('Refresh run status'));
   app.button('Refresh run status').click(); await eventually(() => app.query('.osb-run-status'));
   assert.match(app.container.textContent, /failed.*Missing approval/s);
   assert.equal(app.query('img'), null);
@@ -330,11 +331,8 @@ test('late connection, dispatch and status results cannot recreate a disposed ro
   for (const action of ['probe', 'dispatch', 'status']) await t.test(action, async child => {
     const pending = deferred();
     const app = setup(child, { action: payload => payload.action === action ? pending.promise : undefined });
-    if (action === 'probe') {
-      app.query('details').open = true;
-      app.query('details').dispatchEvent(new app.dom.window.Event('toggle'));
-    } else {
-      await app.open(); app.submit();
+    if (action !== 'probe') {
+      await app.ready(); app.submit();
       if (action === 'status') {
         await eventually(() => app.button('Refresh run status'));
         app.button('Refresh run status').click();
@@ -353,31 +351,31 @@ test('late connection, dispatch and status results cannot recreate a disposed ro
   });
 });
 
-test('selecting a sibling spec dispatches its identity and restores the same run attribution', async t => {
-  const app = setup(t, { role: 'Frontend' });
-  await app.open();
-  const select = app.query('[aria-label="Frontend spec"]');
-  assert.equal(select.options.length, 2);
-  select.value = 'FE-REQ-004-second';
-  select.dispatchEvent(new app.dom.window.Event('change'));
-  app.submit();
+test('the bound sibling spec is immutable and prior history never overrides the new target or skill', async t => {
+  const app = setup(t, { role: 'Frontend', specId: 'FE-REQ-004-second' });
+  await app.ready(); app.select('update'); app.fill('Refine the second spec'); app.submit();
   await eventually(() => app.dispatched().length === 1 && app.query('a'));
   assert.equal(app.dispatched()[0].input.spec_id, 'FE-REQ-004-second');
   assert.match(app.query('[role="status"]').textContent, /FE-REQ-004-second/);
-  app.dispose(); app.mount({ role: 'Frontend' }); await app.open();
-  assert.equal(app.query('[aria-label="Frontend spec"]').value, 'FE-REQ-004-second');
-  assert.equal(app.query('[aria-label="Frontend spec"]').disabled, true);
+  app.dispose(); app.mount({ specId: 'FE-REQ-004-first' }); await app.ready();
+  assert.equal(app.query('[aria-label="Frontend spec"]'), null);
+  assert.equal(app.query('[aria-label="Frontend skill"]').value, 'apply');
+  assert.equal(app.query('[aria-label="Frontend skill"]').disabled, false);
   assert.match(app.query('[role="status"]').textContent, /FE-REQ-004-second/);
   assert.equal(app.dispatched().length, 1);
+  app.button('Start another run').click(); app.submit();
+  await eventually(() => app.dispatched().length === 2 && app.query('a'));
+  assert.equal(app.dispatched()[1].input.spec_id, 'FE-REQ-004-first');
+  assert.equal(app.dispatched()[1].input.stage, 'apply');
 });
 
 test('an earlier run retains its original spec identity when that spec is removed', async t => {
   const app = setup(t);
-  await app.open(); app.submit();
+  await app.ready(); app.submit();
   await eventually(() => app.query('a'));
   app.dispose();
-  app.mount({ requirement: { ...REQUIREMENT, specs: REQUIREMENT.specs.filter(spec => spec.id !== 'SA-REQ-004-first') } });
-  await app.open();
+  app.mount({ specId: 'SA-REQ-004-second', requirement: { ...REQUIREMENT, specs: REQUIREMENT.specs.filter(spec => spec.id !== 'SA-REQ-004-first') } });
+  await app.ready();
   assert.match(app.query('[role="status"]').textContent, /SA-REQ-004-first/);
   assert.equal(app.button('Run SA Apply').disabled, true);
   assert.equal(app.dispatched().length, 1);
@@ -387,15 +385,22 @@ test('legacy metadata stays read-only and empty roles can explicitly propose a c
   await t.test('legacy', async child => {
     const { specs, ...legacy } = REQUIREMENT;
     const app = setup(child, { requirement: legacy });
-    await app.open(); app.submit(); await settled();
+    await app.ready(); app.submit(); await settled();
     assert.equal(app.button('Run SA Apply').disabled, true);
     assert.match(app.query('.osb-skill-help').textContent, /legacy.*Migrate/);
     assert.equal(app.dispatched().length, 0);
   });
   await t.test('empty role', async child => {
-    const app = setup(child, { role: 'Backend', requirement: { ...REQUIREMENT, specs: [] } });
-    await app.open();
+    const app = setup(child, { role: 'Backend', specId: '', requirement: { ...REQUIREMENT, specs: [] } });
+    await app.ready();
     assert.equal(app.query('[aria-label="Backend skill"]').value, 'propose');
+    for (const stage of ['update', 'apply']) {
+      app.select(stage); app.fill('No existing spec'); app.submit(); await settled();
+      assert.equal(app.button(`Run Backend ${stage === 'update' ? 'Update' : 'Apply'}`).disabled, true);
+      assert.match(app.query('.osb-skill-help').textContent, /Choose an existing Role spec/);
+      assert.equal(app.dispatched().length, 0);
+    }
+    app.select('propose');
     app.fill('Plan date validation', 'date-validation');
     app.query('input').dispatchEvent(new app.dom.window.Event('input'));
     assert.match(app.container.textContent, /New spec: BE-REQ-004-date-validation/);
@@ -403,4 +408,82 @@ test('legacy metadata stays read-only and empty roles can explicitly propose a c
     assert.equal(app.dispatched()[0].input.spec_id, 'BE-REQ-004-date-validation');
     assert.equal(app.dispatched()[0].input.change, REQUIREMENT.change);
   });
+});
+
+test('previous run evidence does not lock skill or draft editing, including after remount', async t => {
+  const app = setup(t);
+  await app.ready(); app.select('propose'); app.fill('Plan reminders', 'reminders'); app.submit();
+  await eventually(() => app.query('a'));
+  const history = app.stored();
+  app.dispose(); app.mount(); await app.ready();
+  assert.equal(app.query('select').value, 'apply', 'Previous Propose does not choose the next skill');
+  assert.equal(app.query('input').value, '', 'A previous feature name is not a new draft');
+  for (const stage of STAGES) {
+    assert.equal(app.query('select').disabled, false);
+    assert.equal(app.query('textarea').disabled, false);
+    assert.equal(app.query('input').disabled, false);
+    app.select(stage); app.fill('A new draft', 'other-feature');
+    assert.equal(app.query('input').parentElement.hidden, stage !== 'propose');
+    assert.equal(app.query('textarea').required, stage !== 'apply');
+    assert.match(app.query('[role="status"]').textContent, /SA-REQ-004-reminders/);
+    assert.equal(app.button(`Run SA ${stage[0].toUpperCase()}${stage.slice(1)}`).disabled, true);
+    app.submit(); await settled();
+    assert.equal(app.dispatched().length, 1);
+    assert.deepEqual(app.stored(), history);
+  }
+  assert.match(app.query('[role="status"]').textContent, /Start another run/);
+  app.button('Start another run').click();
+  assert.equal(app.button('Run SA Apply').disabled, false);
+  assert.equal(app.dispatched().length, 1);
+});
+
+test('connection probes, setup and status checks leave skill and draft inputs responsive', async t => {
+  for (const action of ['probe', 'setup', 'status']) await t.test(action, async child => {
+    const pending = deferred();
+    const app = setup(child, { ready: action !== 'setup',
+      action: payload => payload.action === action ? pending.promise : undefined });
+    if (action !== 'probe') {
+      await app.ready();
+      if (action === 'setup') app.button('Connect automations').click();
+      else {
+        app.submit(); await eventually(() => app.button('Refresh run status'));
+        app.button('Refresh run status').click();
+      }
+    }
+    await eventually(() => app.actions.some(item => item.action === action));
+    assert.equal(app.query('.osb-role-actions').getAttribute('aria-busy'), 'true');
+    for (const selector of ['select', 'textarea', 'input']) assert.equal(app.query(selector).disabled, false);
+    app.select('propose'); app.fill('Draft while checking', 'pending-feature');
+    app.query('input').dispatchEvent(new app.dom.window.Event('input'));
+    assert.equal(app.query('input').parentElement.hidden, false);
+    assert.equal(app.query('textarea').required, true);
+    assert.match(app.query('.osb-skill-help').textContent, /Add a named spec/);
+    assert.equal(app.button('Run SA Propose').disabled, true);
+    app.submit();
+    const input = app.actions.find(item => item.action === action).input;
+    pending.resolve(output(action === 'status' ? { version: 1, kind: action, automation_id: input.automation_id,
+      run_id: input.run_id, status: 'COMPLETED', error: null, conversation_id: CONVERSATION_ID } : connection(action)));
+    await app.ready();
+    assert.equal(app.query('select').value, 'propose');
+    assert.equal(app.query('textarea').value, 'Draft while checking');
+    assert.equal(app.query('input').value, 'pending-feature');
+    assert.equal(app.dispatched().length, action === 'status' ? 1 : 0);
+  });
+});
+
+test('missing, stale and wrong-role bound targets cannot dispatch any skill', async t => {
+  for (const specId of [undefined, 'SA-REQ-004-removed', 'FE-REQ-004-first']) {
+    await t.test(String(specId), async child => {
+      const app = setup(child, { specId });
+      await app.ready();
+      assert.equal(app.query('select').disabled, true);
+      assert.match(app.query('.osb-skill-help').textContent, /missing or does not belong/);
+      for (const stage of STAGES) {
+        app.select(stage); app.fill('Do not dispatch stale work', 'new-feature'); app.submit();
+        assert.equal(app.button(`Run SA ${stage[0].toUpperCase()}${stage.slice(1)}`).disabled, true);
+      }
+      await settled();
+      assert.equal(app.dispatched().length, 0);
+    });
+  }
 });

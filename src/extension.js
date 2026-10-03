@@ -226,7 +226,12 @@ export function activate(host) {
       content.append(summary);
       if (requirement.warnings.length) { const warnings = el('div', 'osb-alert'); for (const warning of requirement.warnings) warnings.append(el('p', '', warning)); content.append(warnings); }
       const specs = requirement.specs || [];
-      if (!specs.some(spec => spec.id === selectedSpec)) selectedSpec = specs[0]?.id || '';
+      const emptyRoles = requirement.specs ? requirement.roles.filter(role => !role.specs.length) : [];
+      const targets = [
+        ...specs.map(spec => ({ value: spec.id, label: `${spec.id} · ${spec.title}`, role: spec.role, specId: spec.id })),
+        ...emptyRoles.map(role => ({ value: `new:${role.id}`, label: `${role.id} · New spec`, role: role.id, specId: '' })),
+      ];
+      if (!targets.some(target => target.value === selectedSpec)) selectedSpec = targets[0]?.value || '';
       function taskList(tasks, emptyMessage = 'No tracked tasks.') {
         const list = el('ul', 'osb-checklist');
         for (const task of tasks) {
@@ -239,6 +244,19 @@ export function activate(host) {
         return list;
       }
       const pipeline = el('div', 'osb-pipeline');
+      const artifactActions = el('div', 'osb-artifact-actions');
+      artifactActions.setAttribute('role', 'group'); artifactActions.setAttribute('aria-label', 'Selected spec skill');
+      let actionTarget = null, disposeAction = null;
+      function drawActions() {
+        if (actionTarget === selectedSpec) return;
+        if (disposeAction) { disposeAction(); actionDisposers.delete(disposeAction); disposeAction = null; }
+        artifactActions.replaceChildren(); actionTarget = selectedSpec;
+        const target = targets.find(item => item.value === selectedSpec);
+        if (!target) { artifactActions.append(el('p', 'osb-muted', 'Migrate this store to role specs to run a skill.')); return; }
+        const role = requirement.roles.find(item => item.id === target.role);
+        disposeAction = mountRoleActions({ host, container: artifactActions, navigate, workspace, requirement, role, specId: target.specId });
+        actionDisposers.add(disposeAction);
+      }
       for (const role of requirement.roles) {
         const panel = el('section', `osb-role-panel osb-${role.state}`);
         const top = el('div', 'osb-role-panel-top'); top.append(el('span', 'osb-role-avatar', SHORT[role.id]), badge(STATES[role.state], role.state));
@@ -250,7 +268,7 @@ export function activate(host) {
           for (const spec of ownSpecs) {
             const group = el('section', 'osb-role-spec'); group.setAttribute('aria-label', spec.id);
             const open = button(spec.id, 'osb-spec-link', () => {
-              selectedSpec = spec.id; specSelect.value = selectedSpec; selectedArtifact = 'specs'; drawArtifact();
+              selectedSpec = spec.id; specSelect.value = selectedSpec; selectedArtifact = 'specs'; drawArtifact(); drawActions();
               artifactSection.scrollIntoView?.({ behavior: 'smooth', block: 'start' }); specSelect.focus({ preventScroll: true });
             });
             group.append(open, el('h4', '', spec.title), badge(STATES[spec.state], spec.state),
@@ -260,7 +278,6 @@ export function activate(host) {
           }
           if (!ownSpecs.length) panel.append(el('p', 'osb-warning', 'No specs yet. Propose a feature for this role.'));
         } else panel.append(taskList(role.tasks, 'No tasks assigned to this role.'));
-        actionDisposers.add(mountRoleActions({ host, container: panel, navigate, workspace, requirement, role }));
         pipeline.append(panel);
       }
       content.append(pipeline);
@@ -269,14 +286,14 @@ export function activate(host) {
       const artifactSection = el('section', 'osb-artifacts');
       const artifactHeader = el('div', 'osb-artifact-heading'); artifactHeader.append(el('h3', '', 'Source artifacts'), el('code', '', `openspec/changes/${requirement.change}`));
       const specSelect = el('select', 'osb-spec-select'); specSelect.setAttribute('aria-label', 'Artifact spec');
-      for (const spec of specs) { const option = el('option', '', `${spec.id} · ${spec.title}`); option.value = spec.id; specSelect.append(option); }
+      for (const target of targets) { const option = el('option', '', target.label); option.value = target.value; specSelect.append(option); }
       specSelect.value = selectedSpec;
       specSelect.addEventListener('change', () => {
         selectedSpec = specSelect.value;
         if (!['specs', 'tasks'].includes(selectedArtifact)) selectedArtifact = 'specs';
-        drawArtifact();
+        drawArtifact(); drawActions();
       });
-      if (specs.length) {
+      if (targets.length) {
         const specLabel = el('label', 'osb-artifact-spec'); specLabel.append(el('span', 'osb-label', 'Role spec'), specSelect); artifactHeader.append(specLabel);
       }
       const tabs = el('div', 'osb-artifact-tabs'); tabs.setAttribute('role', 'group'); tabs.setAttribute('aria-label', 'Source artifact');
@@ -290,7 +307,8 @@ export function activate(host) {
       }
       const artifactButtons = new Map();
       const artifacts = () => [...requirement.artifacts, ...(specs.find(spec => spec.id === selectedSpec)?.artifacts || [])];
-      for (const id of artifacts().map(artifact => artifact.id)) {
+      const artifactIds = new Set([...requirement.artifacts, ...specs.flatMap(spec => spec.artifacts)].map(artifact => artifact.id));
+      for (const id of artifactIds) {
         const control = button(ARTIFACTS[id], '', () => { selectedArtifact = id; drawArtifact(); });
         artifactButtons.set(id, control); tabs.append(control);
       }
@@ -299,7 +317,9 @@ export function activate(host) {
         const artifact = available.find(a => a.id === selectedArtifact) || available[0];
         body.replaceChildren();
         for (const [id, control] of artifactButtons) {
-          control.textContent = `${ARTIFACTS[id]}${available.find(a => a.id === id)?.status === 'missing' ? ' · missing' : ''}`;
+          const item = available.find(a => a.id === id);
+          control.hidden = !item;
+          control.textContent = `${ARTIFACTS[id]}${item?.status === 'missing' ? ' · missing' : ''}`;
           control.classList.toggle('selected', id === artifact?.id);
           control.setAttribute('aria-pressed', String(id === artifact?.id));
         }
@@ -325,7 +345,7 @@ export function activate(host) {
         }
       }
       toolbar.append(tabs, modes);
-      artifactSection.append(artifactHeader, toolbar, body); content.append(artifactSection); drawArtifact();
+      artifactSection.append(artifactHeader, artifactActions, toolbar, body); content.append(artifactSection); drawArtifact(); drawActions();
     }
     async function refreshData() {
       if (busy || disposed) return;

@@ -129,14 +129,13 @@
 .osb-check { color:#98a4b5; font-size:14px; flex-shrink:0; }
 .osb-checklist .completed .osb-check { color:#3b8a68; }
 .osb-checklist small { display:block; font-size:9px; color:#9aa5b3; margin-top:3px; }
-.osb-role-actions { margin-top:20px; border-top:1px solid var(--border); padding-top:14px; }
-.osb-role-actions summary { color:var(--accent); cursor:pointer; font-size:12px; font-weight:650; }
-.osb-role-actions-body { padding-top:13px; font-size:11px; }
+.osb-role-actions { min-width:0; }
+.osb-role-actions-body { font-size:11px; }
 .osb-role-actions-body > p { margin-bottom:10px; }
 .osb-automation-target { white-space:pre-wrap; overflow-wrap:anywhere; color:var(--muted); font-size:10px; }
 .osb-run-controls { display:flex; flex-wrap:wrap; gap:7px; margin:12px 0; }
 .osb-role-actions .osb-button { padding:7px 10px; min-height:34px; font-size:11px; white-space:normal; }
-.osb-skill-form { display:grid; gap:12px; margin-top:15px; }
+.osb-skill-form { display:grid; gap:12px; margin-bottom:16px; }
 .osb-skill-field { display:grid; gap:6px; min-width:0; }
 .osb-skill-field[hidden],.osb-role-actions [hidden] { display:none; }
 .osb-skill-field input,.osb-skill-field select,.osb-skill-field textarea { width:100%; min-width:0; border:1px solid var(--border); border-radius:6px; padding:8px; background:white; color:var(--ink); font:12px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
@@ -153,6 +152,7 @@
 .osb-artifact-heading { padding:20px; justify-content:space-between; flex-wrap:wrap; gap:12px; }
 .osb-artifact-heading h3 { font-size:15px; }
 .osb-artifact-heading code { color:var(--muted); font-size:11px; overflow-wrap:anywhere; }
+.osb-artifact-actions { padding:0 20px 20px; }
 .osb-artifact-toolbar { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px 18px; border-bottom:1px solid var(--border); padding-right:20px; }
 .osb-artifact-tabs { display:flex; gap:18px; padding:0 20px; flex-wrap:wrap; }
 .osb-artifact-modes { margin:5px 0 8px; }
@@ -198,4 +198,4 @@
 @media(max-width:1000px) { .osb-root { padding:24px 20px; } .osb-metrics { gap:10px; } .osb-metric { padding:14px; } .osb-search { width:210px; } .osb-pipeline { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 @media(max-width:650px) { .osb-header { align-items:flex-start; } .osb-root h1 { font-size:23px; } .osb-symbol { display:none; } .osb-live { display:none; } .osb-header-actions { gap:6px; } .osb-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); } .osb-store-field { display:block; } .osb-store .osb-button { padding:8px 10px; } .osb-toolbar { gap:8px; } .osb-search { order:3; width:100%; } .osb-toolbar select { flex:1; min-width:120px; } .osb-views { width:100%; } .osb-board-caption { display:block; } .osb-board-caption span { display:block; margin-top:4px; } .osb-detail-heading { display:block; } .osb-detail-heading .osb-header-actions { margin-top:12px; } .osb-completion { flex-wrap:wrap; } .osb-completion .osb-meter { min-width:130px; } .osb-pipeline { grid-template-columns:1fr; } .osb-footer { align-items:flex-start; flex-direction:column; } }
 @media(prefers-reduced-motion:reduce) { .osb-card { transition:none; } .osb-card:hover { transform:none; } }
-@media(max-width:650px) { .osb-artifact-toolbar { padding:0 14px 8px; gap:4px; } .osb-artifact-tabs { padding:0; gap:15px; } .osb-artifact-modes { width:auto; margin:0; } .osb-markdown { padding:20px; } }
+@media(max-width:650px) { .osb-artifact-actions { padding:0 14px 16px; } .osb-artifact-toolbar { padding:0 14px 8px; gap:4px; } .osb-artifact-tabs { padding:0; gap:15px; } .osb-artifact-modes { width:auto; margin:0; } .osb-markdown { padding:20px; } }

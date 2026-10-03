@@ -99,6 +99,7 @@ function setup(t, options = {}) {
   Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: dom.window.localStorage });
   for (const [key, value] of Object.entries(options.storage || {})) dom.window.localStorage.setItem(key, value);
   const calls = [];
+  const automationCalls = [];
   const navigation = [];
   const registrations = [];
   let unregisterCount = 0;
@@ -114,6 +115,12 @@ function setup(t, options = {}) {
     },
     agentServer: {
       async request(request) {
+        if (request.method === 'GET' || request.body?.cwd === '/Users/test') {
+          automationCalls.push(request);
+          if (options.automationRequest) return options.automationRequest(request);
+          assert.ok(['/server_info', '/api/file/home'].includes(request.path));
+          return {};
+        }
         calls.push(request);
         return options.request ? options.request(request, calls.length) : output(board(request.body.cwd));
       },
@@ -135,7 +142,7 @@ function setup(t, options = {}) {
   const dispose = options.mount === false || options.start === false ? null : mount();
   const document = dom.window.document;
   return {
-    dom, document, host, calls, navigation, registrations, mount, dispose, start,
+    dom, document, host, calls, automationCalls, navigation, registrations, mount, dispose, start,
     deactivate: () => { const cleanup = deactivate; deactivate = null; cleanup?.(); },
     unregisterCount: () => unregisterCount,
     query: selector => document.querySelector(selector),
@@ -157,12 +164,21 @@ test('role specs show independent progress and exact selectable sources across r
     request: async () => output(await fixture.run()) });
   await settled(); await settled();
   assert.equal(app.all('.osb-role-spec').length, 5);
+  assert.equal(app.all('.osb-artifacts form').length, 1);
+  assert.equal(app.all('.osb-role-actions summary, .osb-role-actions details').length, 0);
+  assert.equal(app.all('.osb-role-actions select').length, 1, 'Only Skill is selected inside the form');
   assert.equal(app.query('.osb-completion strong').textContent, '3 of 4 roles complete');
   assert.equal(app.all('.osb-spec-count')[1].textContent, '1 / 2 specs complete');
   app.change('[aria-label="Artifact spec"]', 'FE-REQ-001-filters');
+  assert.equal(app.query('.osb-artifacts form').getAttribute('aria-label'), 'Frontend automation');
+  app.change('[aria-label="Frontend skill"]', 'update');
+  app.change('[aria-label="Frontend prompt"]', 'Refine filter behavior', 'input');
+  const draftForm = app.query('.osb-artifacts form');
   assert.equal(app.query('.osb-markdown h1').textContent, 'Frontend filters');
   assert.match(app.query('.osb-artifact-path').textContent, /specs\/FE-REQ-001-filters\/spec.md$/);
   app.button('Tasks').click(); app.button('Source').click();
+  assert.equal(app.query('.osb-artifacts form'), draftForm);
+  assert.equal(app.query('[aria-label="Frontend prompt"]').value, 'Refine filter behavior');
   assert.equal(app.query('.osb-artifact-source').textContent, '# Tasks\n\n- [ ] 1.1 [Frontend] Verify Frontend filters\n');
   app.change('[aria-label="Artifact spec"]', 'FE-REQ-001-labels');
   assert.match(app.query('.osb-artifact-source').textContent, /\[x\].*Frontend labels/);
@@ -172,11 +188,61 @@ test('role specs show independent progress and exact selectable sources across r
   assert.match(app.query('.osb-artifact-source').textContent, /Frontend labels/);
   assert.equal(app.button('Source').getAttribute('aria-pressed'), 'true');
   app.button('QA-REQ-001-labels').click();
+  assert.equal(app.query('.osb-artifacts form').getAttribute('aria-label'), 'QA automation');
+  assert.equal(app.query('[aria-label="QA prompt"]').value, '', 'A draft does not leak across targets');
   assert.match(app.query('.osb-artifact-source').textContent, /Contract for QA-REQ-001-labels/);
   assert.equal(app.document.activeElement, app.query('[aria-label="Artifact spec"]'));
   app.button('Proposal').click();
   assert.match(app.query('.osb-artifact-source').textContent, /Shared proposal/);
-  assert.equal(app.calls.length, 2, 'Only the explicit store refresh makes another request');
+  assert.equal(app.calls.length, 2, 'Only the explicit store refresh collects the board again');
+  assert.ok(app.automationCalls.every(call => call.method === 'GET'), 'Target changes only probe advertised services');
+});
+
+test('Role spec selects the exact target for the single inline skill form', async t => {
+  const fixture = await roleSpecsFixture(t);
+  const actions = [];
+  const automations = ROLE_IDS.flatMap((role, r) => ['propose', 'update', 'apply'].map((stage, s) => ({
+    id: `0f0f0f0f-1111-4444-8888-${String(r * 3 + s + 1).padStart(12, '0')}`,
+    name: `OpenSpec ${role} · ${stage[0].toUpperCase()}${stage.slice(1)}`, role, stage,
+  })));
+  const app = setup(t, { path: 'requirements/REQ-001',
+    storage: { 'openhands.apps.openspec-progress:v3:local-main:store': fixture.cwd },
+    request: async () => output(await fixture.run()),
+    automationRequest: async request => {
+      if (request.path === '/server_info') return { runtime_services: { services: { automation: {
+        url_from_agent: 'http://127.0.0.1:18001', api_prefix: '/api/automation', auth_env_var: 'OPENHANDS_AUTOMATION_API_KEY',
+      } } } };
+      if (request.path === '/api/file/home') return { home: '/Users/test' };
+      const encoded = request.body.command.match(/'([A-Za-z0-9+/=]+)'\s*$/)[1];
+      const payload = JSON.parse(Buffer.from(encoded, 'base64').toString('utf8'));
+      actions.push(payload);
+      if (payload.action === 'dispatch') return output({ version: 1, kind: 'dispatch',
+        automation_id: payload.input.automation_id, request_id: payload.input.request_id,
+        run_id: '05ad810c-bcc0-409b-902d-1bc78023c22b' });
+      assert.equal(payload.action, 'probe', 'Selection never performs setup or dispatch');
+      return output({ version: 1, kind: 'probe', ready: true, automations,
+        configuration: { workspace: '/Users/test/project', spec_store: fixture.cwd,
+          store_id: 'openspec-store', repository: '/Users/oka/Desktop/openhands-automation' }, message: '' });
+    },
+  });
+  await settled(); await settled();
+  app.change('[aria-label="Artifact spec"]', 'FE-REQ-001-filters');
+  app.change('[aria-label="Frontend skill"]', 'update');
+  app.change('[aria-label="Frontend prompt"]', 'Clarify the selected filter rule.', 'input');
+  await settled();
+  assert.equal(app.all('form.osb-skill-form').length, 1);
+  assert.ok(actions.every(action => action.action === 'probe'));
+  assert.equal(app.button('Run Frontend Update').disabled, false);
+  app.button('Run Frontend Update').click(); await settled();
+  const dispatches = actions.filter(action => action.action === 'dispatch');
+  assert.equal(dispatches.length, 1);
+  assert.equal(dispatches[0].input.spec_id, 'FE-REQ-001-filters');
+  assert.equal(dispatches[0].input.role, 'Frontend');
+  assert.equal(dispatches[0].input.stage, 'update');
+  assert.equal(dispatches[0].input.request, 'Clarify the selected filter rule.');
+  app.change('[aria-label="Frontend skill"]', 'propose');
+  assert.equal(app.query('[aria-label="Frontend new feature name"]').parentElement.hidden, false);
+  assert.equal(actions.filter(action => action.action === 'dispatch').length, 1);
 });
 
 test('board search matches spec identity and title while counting parent requirements', async t => {
@@ -205,6 +271,15 @@ test('a role without specs has an explicit incomplete state and retains shared s
   assert.match(app.query('.osb-content').textContent, /SA has no registered specs/);
   assert.equal(app.query('.osb-completion strong').textContent, '2 of 4 roles complete');
   assert.equal(app.query('.osb-markdown h1').textContent, 'Shared proposal');
+  app.change('[aria-label="Artifact spec"]', 'new:SA');
+  assert.equal(app.query('[aria-label="SA skill"]').value, 'propose');
+  assert.equal(app.query('.osb-markdown h1').textContent, 'Shared proposal');
+  assert.equal(app.button('Specification').hidden, true);
+  assert.equal(app.button('Tasks').hidden, true);
+  app.change('[aria-label="Artifact spec"]', 'FE-REQ-001-filters');
+  assert.equal(app.button('Specification').hidden, false);
+  assert.equal(app.button('Tasks').hidden, false);
+  assert.equal(app.query('.osb-markdown h1').textContent, 'Frontend filters');
 });
 
 test('manifest identity registers the native page and all six Kanban lanes', async t => {
@@ -298,10 +373,12 @@ test('direct requirement detail displays all roles and read-only task checklists
   assert.equal(app.all('.osb-checklist input, .osb-checklist button, [contenteditable="true"]').length, 0);
   assert.equal(app.query('.osb-checklist li small').textContent, 'tasks.md:3');
   assert.match(app.query('.osb-footer').textContent, /Read-only progress/);
-  assert.equal(app.all('details.osb-role-actions').length, 4);
-  assert.deepEqual(app.all('details.osb-role-actions summary').map(node => node.getAttribute('aria-label')),
-    ROLE_IDS.map(role => `Run OpenSpec skill for ${role}`));
-  assert.equal(app.calls.length, 1, 'Rendering role controls does not contact Automation or start a run');
+  assert.equal(app.all('.osb-role-actions').length, 0, 'Legacy stores remain read-only');
+  assert.equal(app.all('.osb-role-panel .osb-role-actions').length, 0);
+  assert.equal(app.query('.osb-artifact-actions').nextElementSibling, app.query('.osb-artifact-toolbar'));
+  assert.match(app.query('.osb-artifact-actions').textContent, /Migrate.*role specs/);
+  assert.equal(app.calls.length, 1);
+  assert.equal(app.automationCalls.length, 0, 'Legacy stores do not contact Automation');
   app.query('.osb-breadcrumb a').click();
   assert.deepEqual(app.navigation, [BASE]);
 });

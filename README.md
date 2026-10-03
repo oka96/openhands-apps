@@ -28,7 +28,7 @@ the connected Agent Server.
   inspect the exact text. Your choice stays selected when switching documents
   or refreshing the requirement.
 - Edit files in the store, then select **Refresh**. Progress and checklists are read-only in the board.
-- In a requirement, expand **Run OpenSpec skill** under SA, Frontend, Backend, or QA to start work through native OpenHands automations.
+- In **Source artifacts**, choose **Role spec** and then **Skill** to start work through native OpenHands automations. The selected spec determines its role and target.
 
 The six sample requirements are **illustrative fixtures**. Their seeded
 checkboxes demonstrate different stages; they are not claims that the sample
@@ -51,13 +51,22 @@ does not edit documents, check tasks, or start automations. If formatting fails,
 
 ## Run a role skill
 
-Open a requirement and expand the action under the role that should do the work.
+Open a requirement and scroll below the role progress cards to **Source artifacts**.
+Choose **Role spec** to select both the source document and automation target.
+One inline **Skill** form appears immediately below it. For a role with no specs,
+choose its **New spec** entry to propose the first feature. Switching documents or
+Preview/Source preserves your draft; choosing a different Role spec opens that
+target's form.
 Select **Connect automations** once to install twelve dedicated role-and-skill definitions from
 `/Users/oka/Desktop/openhands-automation` and enable signed local requests. This
 starts no agent. Each role has its own Propose, Update and Apply automation.
 Connect also retires the seven legacy stage and three generic role definitions
 after verifying they have no active runs; existing conversations remain available.
 The panel shows the configured code project and spec store.
+Connection checks are read-only, and Skill remains editable while they run.
+Previous run links remain visible without locking Skill. After a submission,
+use **Start another run** to enable another explicit submission; changing Skill
+alone does not start a run or discard its history.
 
 Choose a skill and supply one prompt:
 
@@ -72,10 +81,10 @@ task completion. Runs stop at their selected skill; they never advance another
 stage, commit, push, archive, or deploy. Missing decisions or tool approvals appear
 as blocked results for the user to resolve.
 
-New conversations have native `requirement`, `role`, `openspecstage`, and
-`openspecskill`, and `openspecspec` tags so you can identify their origin in
-OpenHands. `openspecchange` retains the parent change name. Titles use
-`[Role] <spec ID>`, for example `[SA] SA-REQ-002-date-contract`.
+New conversations have native `requirement`, `role`, `openspecstage`,
+`openspecspec`, `automationrunid`, and `automationtrigger` tags so you can identify
+their origin in OpenHands. The redundant `openspecchange` and `openspecskill` tags
+are omitted. Titles use the plain spec ID, for example `SA-REQ-002-date-contract`.
 
 Targets are fixed in
 `/Users/oka/Desktop/openhands-automation/role-workflow.json`: code and skills default

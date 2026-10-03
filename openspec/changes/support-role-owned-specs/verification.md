@@ -33,3 +33,34 @@ Verified 2026-10-04 (Asia/Kuala_Lumpur).
 - Screenshot: `artifacts/role-spec-preview.jpg` (local evidence, ignored by Git).
 
 These checks validate routing and guards without asking an agent to implement sample product work. Sample checkboxes remain illustrative. The active planning change is left available for inspection.
+
+## Conversation metadata simplification
+
+Verified 2026-10-04 after the original role-spec rollout:
+
+- Runtime contract tests now cover plain spec-ID titles and the six retained tags across all twelve role/stage pairs. Seven legacy stages omit the two obsolete tags as well. Naming still succeeds before agent execution, and naming failures never start the agent.
+- Automation checks passed: 62 Python tests, twelve generated bundles match source, and the retained legacy app passed 37 JavaScript plus 6 Python tests and build/validation. All four app OpenSpec changes pass strict validation.
+- Inspected the full native conversation list with all threads, automation runs, archived conversations included, and old conversations visible: 20 conversations, no further page. Restored the original archived-visibility setting afterward.
+- Removed three bracketed role title prefixes: Frontend labels, SA labels, and SA quick capture. Removed `openspecchange` from nine conversations and `openspecskill` from six (15 tag entries), retaining other tags through the native editor. Existing ADLC tags remained unchanged.
+- Native tag filters now list no `openspecchange` or `openspecskill`. Reopening Frontend labels after navigation confirms title `FE-REQ-003-labels` and visible tags `openspecspec`, `openspecstage`, `requirement`, and `role`; native internal automation tags are preserved by the editor.
+- Reconnected the twelve existing automation definitions. The panel reports `Connected · Propose, Update, Apply`; setup starts no agent. Screenshot evidence: `artifacts/conversation-cleanup.jpg` (ignored local artifact).
+- No conversation was deleted, and no agent run was triggered for this cleanup. No spec-store or target application edits were made by this request.
+
+## Skills with source artifacts
+
+- Moved the four existing role skill disclosures into a labeled group inside Source artifacts, above the document toolbar. Visible summaries identify each role; the progress cards retain their checklists and source links.
+- Apps `npm run check` passed: 109 JavaScript and 25 Python tests, bundle/manifest validation, and all four strict OpenSpec validations. Official Canvas validators passed for the root package and dist. Updated existing layout assertions confirm four runners inside Source artifacts, zero in progress cards, correct toolbar order, role labels, and no automation request on render.
+- Reinstalled and enabled the rebuilt local extension with its existing identity and permissions. Live REQ-003 DOM confirms four source-section runners and no role-card runners. Opened Backend and observed `Connected · Propose, Update, Apply`, then selected the Backend labels source without submitting a run.
+- At the native 295px viewport, document width and scroll width both remain 295px. The selected specification preview has equal client and scroll heights of 1014px. The role controls stack in one column and remain independently expandable.
+- Screenshot: `artifacts/source-artifact-skills.jpg` (ignored local evidence). No agent execution or store mutation was performed by this layout request.
+
+## Unified Role spec and Skill form
+
+This refinement supersedes the four-disclosure layout above.
+
+- Source artifacts now contains exactly one inline form. Role spec selects its immutable role/spec target as well as its source documents. There are no role disclosures or duplicate Spec selector. Empty roles remain selectable through New spec entries, and Specification/Tasks tabs follow target availability.
+- Fixed Skill being disabled by any saved last-run reference or read-only check. Skill and draft fields remain editable during connection/status checks and with history; dispatch still disables editing, and previous/uncertain submissions retain the explicit Start another run guard.
+- App `npm run check` passed 119 JavaScript and 25 Python tests (144 total), build/manifest validation, and strict validation for all four changes. The focused form suite passed 42 tests, including bound targets, old history, editable fields during checks, wrong-role/removed targets, empty roles, duplicates and late responses. Parent integration verifies the actual mock dispatch uses the selected second Frontend spec and preserves drafts across artifact tab/mode changes. Official Canvas package and dist validators passed.
+- Installed the rebuilt app. In live REQ-003, a direct native click opened Skill and choosing Update changed its value, help, required prompt and Run label. Propose showed the Frontend feature field and `FE-REQ-003-<feature>` preview; Apply hid it and made the prompt optional. No Run action was submitted.
+- Selected `FE-REQ-003-filters` and verified one Frontend form, the matching source path, two selects total (Role spec and Skill), and no disclosures. Preview client/scroll heights remain equal at 918px; document client/scroll widths remain 295px.
+- Screenshot: `artifacts/unified-spec-skill.jpg` (ignored local evidence). No automation package, spec-store or target application changes were needed for this refinement.
