@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "name": "openspec-progress",
+  "display_name": "OpenSpec board",
+  "version": "0.5.0",
+  "entrypoint": "extension.js",
+  "contributes": {
+    "pages": [{
+      "id": "progress",
+      "title": "OpenSpec board",
+      "path": "/progress",
+      "nav_label": "OpenSpec board",
+      "description": "Requirement Kanban and delivery progress across SA, Frontend, Backend, and QA."
+    }]
+  }
+}
