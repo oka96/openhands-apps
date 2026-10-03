@@ -18,7 +18,7 @@ const REQUEST = '9f7c478c-5ad3-438d-a5c5-a4a24c173927';
 const RUN = 'a4e6543c-4c21-4f9b-9a9e-6598d1f544d8';
 const service = { url_from_agent: 'http://127.0.0.1:18021', api_prefix: '/api/automation', auth_env_var: 'OPENHANDS_AUTOMATION_API_KEY' };
 const baseInput = { stage: 'update', spec_store: '/Users/oka/Desktop/openspec-store', requirement_id: 'REQ-001',
-  context_change: 'current-change', role: 'SA', change: 'current-change', request: 'Update 标签; $(never-run)', automation_id: AUTO, request_id: REQUEST };
+  context_change: 'current-change', role: 'SA', spec_id: 'SA-REQ-001-first', change: 'current-change', request: 'Update 标签; $(never-run)', automation_id: AUTO, request_id: REQUEST };
 const config = { workspace: '/Users/oka/Desktop/openhands-demo', spec_store: baseInput.spec_store,
   store_id: 'openspec-store', repository: '/Users/oka/Desktop/openhands-automation' };
 const info = (kind = 'probe', ready = false) => ({ version: 1, kind, ready, configuration: config,
@@ -41,7 +41,7 @@ function host(value, overrides = {}) {
 
 test('all four roles and three stages accept a single prompt with exact context rules', () => {
   for (const role of ['SA', 'Frontend', 'Backend', 'QA']) for (const stage of ['propose', 'update', 'apply']) {
-    const input = { ...baseInput, role, stage, change: stage === 'propose' ? 'new-change' : 'current-change', request: stage === 'apply' ? '' : baseInput.request };
+    const input = { ...baseInput, role, stage, spec_id: `${{ SA: 'SA', Frontend: 'FE', Backend: 'BE', QA: 'QA' }[role]}-REQ-001-first`, change: 'current-change', request: stage === 'apply' ? '' : baseInput.request };
     assert.equal(validateRoleInput(input), input);
     const { automation_id, request_id, ...form } = input;
     assert.equal(validateRoleInput(form), form);
@@ -52,7 +52,7 @@ test('malformed form data cannot contact Agent Server', async () => {
   for (const edit of [{ role: 'Admin' }, { stage: 'sync' }, { request: '' }, { request: 'x'.repeat(10001) },
     { spec_store: '/tmp/.local/store' }, { spec_store: '/tmp/../store' }, { requirement_id: '../../x' },
     { context_change: 'elsewhere' }, { change: '../escape' }, { change: 'different-change' }, { extra: true },
-    { automation_id: 'invalid' }, { request_id: 'invalid' }, { stage: 'propose' }]) {
+    { automation_id: 'invalid' }, { request_id: 'invalid' }, { spec_id: 'SA-REQ-002-wrong' }, { spec_id: 'FE-REQ-001-wrong' }, { spec_id: 'SA-REQ-001-../escape' }]) {
     const adapter = host(dispatched);
     await assert.rejects(callRoleAutomation(adapter, 'dispatch', { ...baseInput, ...edit }));
     assert.equal(adapter.calls.length, 0);

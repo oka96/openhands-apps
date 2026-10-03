@@ -48,7 +48,7 @@ export function activate(host) {
   const mounts = new Set();
   const unregister = host.registerPage('progress', ({ container, path, navigate }) => {
     let disposed = false, busy = false, generation = 0, snapshot = null;
-    let selectedArtifact = 'proposal', artifactMode = 'preview';
+    let selectedArtifact = 'proposal', artifactMode = 'preview', selectedSpec = '';
     const actionDisposers = new Set();
     function clearActions() { for (const cleanup of actionDisposers) cleanup(); actionDisposers.clear(); }
     const root = el('section', 'osb-root');
@@ -82,7 +82,7 @@ export function activate(host) {
     const actions = el('div', 'osb-header-actions');
     const refresh = button('↻  Refresh', 'osb-button osb-primary', () => refreshData());
     actions.append(badge('Live from files', 'live'), refresh); header.append(branding, actions);
-    const subtitle = el('p', 'osb-subtitle', 'One requirement. Four roles. A shared definition of done.');
+    const subtitle = el('p', 'osb-subtitle', 'Requirements → role specs → verified tasks.');
     const storeForm = el('form', 'osb-store');
     const storeLabel = el('label', 'osb-store-field');
     storeLabel.append(el('span', 'osb-label', 'SPEC STORE'));
@@ -131,7 +131,7 @@ export function activate(host) {
       const strip = el('div', 'osb-role-strip');
       for (const role of requirement.roles) {
         const pill = el('span', `osb-role osb-${role.state}`, `${role.state === 'done' ? '✓ ' : role.state === 'blocked' ? '! ' : ''}${SHORT[role.id]}`);
-        pill.title = `${role.id}: ${STATES[role.state]} · ${role.complete}/${role.total} tasks`;
+        pill.title = `${role.id}: ${STATES[role.state]}${role.specs ? ` · ${role.specs.length} specs` : ''} · ${role.complete}/${role.total} tasks`;
         pill.setAttribute('aria-label', pill.title); strip.append(pill);
       }
       return strip;
@@ -141,10 +141,10 @@ export function activate(host) {
       const top = el('div', 'osb-card-top'); top.append(el('span', 'osb-id', requirement.id));
       item.append(top, el('h3', '', requirement.title), el('p', 'osb-card-summary', requirement.summary), roleStrip(requirement));
       const foot = el('div', 'osb-card-foot');
-      foot.append(el('span', '', `${requirement.rolesComplete}/4 roles`), el('span', '', `${requirement.complete}/${requirement.total} tasks`));
+      foot.append(el('span', '', `${requirement.rolesComplete}/4 roles${requirement.specs ? ` · ${requirement.specs.length} specs` : ''}`), el('span', '', `${requirement.complete}/${requirement.total} tasks`));
       item.append(meter(requirement.complete, requirement.total, `${requirement.id} tasks complete`), foot);
       const blocked = requirement.roles.find(r => r.state === 'blocked');
-      if (blocked) item.append(el('p', 'osb-blocker', `! ${blocked.note || `${blocked.id} is blocked`}`));
+      if (blocked) item.append(el('p', 'osb-blocker', `! ${requirement.specs?.find(spec => spec.role === blocked.id && spec.state === 'blocked')?.note || blocked.note || `${blocked.id} is blocked`}`));
       if (requirement.warnings.length) item.append(el('span', 'osb-warning', `${requirement.warnings.length} tracking warning${requirement.warnings.length === 1 ? '' : 's'}`));
       return item;
     }
@@ -174,7 +174,7 @@ export function activate(host) {
       content.append(toolbar, caption, results);
       function drawResults() {
         const query = filters.query.trim().toLowerCase();
-        const reqs = snapshot.requirements.filter(r => (!query || `${r.id} ${r.title} ${r.summary} ${r.change}`.toLowerCase().includes(query)) &&
+        const reqs = snapshot.requirements.filter(r => (!query || `${r.id} ${r.title} ${r.summary} ${r.change} ${(r.specs || []).map(spec => `${spec.id} ${spec.title}`).join(' ')}`.toLowerCase().includes(query)) &&
           (!filters.role || r.roles.some(role => role.id === filters.role && role.state !== 'done')));
         count.textContent = `${reqs.length} of ${snapshot.requirements.length} requirements`;
         results.replaceChildren();
@@ -225,21 +225,41 @@ export function activate(host) {
       summary.append(el('strong', '', `${requirement.rolesComplete} of 4 roles complete`), meter(requirement.complete, requirement.total, 'Requirement task progress'), el('span', 'osb-muted', `${requirement.complete} of ${requirement.total} tasks checked`));
       content.append(summary);
       if (requirement.warnings.length) { const warnings = el('div', 'osb-alert'); for (const warning of requirement.warnings) warnings.append(el('p', '', warning)); content.append(warnings); }
+      const specs = requirement.specs || [];
+      if (!specs.some(spec => spec.id === selectedSpec)) selectedSpec = specs[0]?.id || '';
+      function taskList(tasks, emptyMessage = 'No tracked tasks.') {
+        const list = el('ul', 'osb-checklist');
+        for (const task of tasks) {
+          const item = el('li', task.done ? 'completed' : '');
+          const mark = el('span', 'osb-check', task.done ? '✓' : '○'); mark.setAttribute('aria-label', task.done ? 'Complete' : 'Remaining');
+          const text = el('div'); text.append(el('span', '', task.description), el('small', '', `${task.specId ? `${task.specId}.md` : 'tasks.md'}:${task.line}`));
+          item.append(mark, text); list.append(item);
+        }
+        if (!tasks.length) list.append(el('li', 'osb-warning', emptyMessage));
+        return list;
+      }
       const pipeline = el('div', 'osb-pipeline');
       for (const role of requirement.roles) {
         const panel = el('section', `osb-role-panel osb-${role.state}`);
         const top = el('div', 'osb-role-panel-top'); top.append(el('span', 'osb-role-avatar', SHORT[role.id]), badge(STATES[role.state], role.state));
         panel.append(top, el('h3', '', role.id === 'SA' ? 'SA · Solution Architect' : role.id), el('p', 'osb-owner', role.owner), meter(role.complete, role.total, `${role.id} task progress`), el('p', 'osb-task-count', `${role.complete} / ${role.total} tasks`));
         if (role.note) panel.append(el('p', 'osb-role-note', role.note));
-        const tasks = el('ul', 'osb-checklist');
-        for (const task of role.tasks) {
-          const item = el('li', task.done ? 'completed' : '');
-          const mark = el('span', 'osb-check', task.done ? '✓' : '○'); mark.setAttribute('aria-label', task.done ? 'Complete' : 'Remaining');
-          const text = el('div'); text.append(el('span', '', task.description), el('small', '', `tasks.md:${task.line}`));
-          item.append(mark, text); tasks.append(item);
-        }
-        if (!role.tasks.length) tasks.append(el('li', 'osb-warning', 'No tasks assigned to this role.'));
-        panel.append(tasks);
+        if (requirement.specs) {
+          const ownSpecs = specs.filter(spec => spec.role === role.id);
+          panel.append(el('p', 'osb-spec-count', `${ownSpecs.filter(spec => spec.state === 'done').length} / ${ownSpecs.length} specs complete`));
+          for (const spec of ownSpecs) {
+            const group = el('section', 'osb-role-spec'); group.setAttribute('aria-label', spec.id);
+            const open = button(spec.id, 'osb-spec-link', () => {
+              selectedSpec = spec.id; specSelect.value = selectedSpec; selectedArtifact = 'specs'; drawArtifact();
+              artifactSection.scrollIntoView?.({ behavior: 'smooth', block: 'start' }); specSelect.focus({ preventScroll: true });
+            });
+            group.append(open, el('h4', '', spec.title), badge(STATES[spec.state], spec.state),
+              el('span', 'osb-spec-progress', `${spec.complete} / ${spec.total} tasks`));
+            if (spec.note) group.append(el('p', 'osb-role-note', spec.note));
+            group.append(taskList(spec.tasks)); panel.append(group);
+          }
+          if (!ownSpecs.length) panel.append(el('p', 'osb-warning', 'No specs yet. Propose a feature for this role.'));
+        } else panel.append(taskList(role.tasks, 'No tasks assigned to this role.'));
         actionDisposers.add(mountRoleActions({ host, container: panel, navigate, workspace, requirement, role }));
         pipeline.append(panel);
       }
@@ -248,6 +268,17 @@ export function activate(host) {
       if (unassigned.length) { const other = el('section', 'osb-unassigned'); other.append(el('h3', '', 'Unassigned tasks')); for (const task of unassigned) other.append(el('p', '', `${task.done ? '✓' : '○'} ${task.description}`)); content.append(other); }
       const artifactSection = el('section', 'osb-artifacts');
       const artifactHeader = el('div', 'osb-artifact-heading'); artifactHeader.append(el('h3', '', 'Source artifacts'), el('code', '', `openspec/changes/${requirement.change}`));
+      const specSelect = el('select', 'osb-spec-select'); specSelect.setAttribute('aria-label', 'Artifact spec');
+      for (const spec of specs) { const option = el('option', '', `${spec.id} · ${spec.title}`); option.value = spec.id; specSelect.append(option); }
+      specSelect.value = selectedSpec;
+      specSelect.addEventListener('change', () => {
+        selectedSpec = specSelect.value;
+        if (!['specs', 'tasks'].includes(selectedArtifact)) selectedArtifact = 'specs';
+        drawArtifact();
+      });
+      if (specs.length) {
+        const specLabel = el('label', 'osb-artifact-spec'); specLabel.append(el('span', 'osb-label', 'Role spec'), specSelect); artifactHeader.append(specLabel);
+      }
       const tabs = el('div', 'osb-artifact-tabs'); tabs.setAttribute('role', 'group'); tabs.setAttribute('aria-label', 'Source artifact');
       const toolbar = el('div', 'osb-artifact-toolbar');
       const modes = el('div', 'osb-views osb-artifact-modes'); modes.setAttribute('role', 'group'); modes.setAttribute('aria-label', 'Artifact display');
@@ -258,14 +289,17 @@ export function activate(host) {
         modeButtons.set(mode, control); modes.append(control);
       }
       const artifactButtons = new Map();
-      for (const artifact of requirement.artifacts) {
-        const control = button(`${ARTIFACTS[artifact.id]}${artifact.status === 'missing' ? ' · missing' : ''}`, '', () => { selectedArtifact = artifact.id; drawArtifact(); });
-        artifactButtons.set(artifact.id, control); tabs.append(control);
+      const artifacts = () => [...requirement.artifacts, ...(specs.find(spec => spec.id === selectedSpec)?.artifacts || [])];
+      for (const id of artifacts().map(artifact => artifact.id)) {
+        const control = button(ARTIFACTS[id], '', () => { selectedArtifact = id; drawArtifact(); });
+        artifactButtons.set(id, control); tabs.append(control);
       }
       function drawArtifact() {
-        const artifact = requirement.artifacts.find(a => a.id === selectedArtifact) || requirement.artifacts[0];
+        const available = artifacts();
+        const artifact = available.find(a => a.id === selectedArtifact) || available[0];
         body.replaceChildren();
         for (const [id, control] of artifactButtons) {
+          control.textContent = `${ARTIFACTS[id]}${available.find(a => a.id === id)?.status === 'missing' ? ' · missing' : ''}`;
           control.classList.toggle('selected', id === artifact?.id);
           control.setAttribute('aria-pressed', String(id === artifact?.id));
         }

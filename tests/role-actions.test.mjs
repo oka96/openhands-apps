@@ -30,7 +30,9 @@ const AUTOMATIONS = ROLES.flatMap((role, r) => STAGES.map((stage, index) => ({
 const RUN_ID = '05ad810c-bcc0-409b-902d-1bc78023c22b';
 const CONVERSATION_ID = '6f3d24ee-3348-4d84-991d-955359e50a29';
 const SERVICE = { url_from_agent: 'http://127.0.0.1:8001', api_prefix: '/api/automation', auth_env_var: 'OPENHANDS_AUTOMATION_API_KEY' };
-const REQUIREMENT = { id: 'REQ-004', title: 'Complete tasks', summary: 'Keep completed tasks visible.', change: 'add-task-completion' };
+const PREFIXES = { SA: 'SA', Frontend: 'FE', Backend: 'BE', QA: 'QA' };
+const REQUIREMENT = { id: 'REQ-004', title: 'Complete tasks', summary: 'Keep completed tasks visible.', change: 'add-task-completion',
+  specs: ROLES.flatMap(role => ['first', 'second'].map(feature => ({ id: `${PREFIXES[role]}-REQ-004-${feature}`, role, title: feature }))) };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 function output(value) { return { stdout: JSON.stringify(value), stderr: '', exit_code: 0, order: 0 }; }
@@ -95,8 +97,8 @@ function setup(t, options = {}) {
     host.backend.id = overrides.backend || options.backend || 'local-main';
     const dispose = mountRoleActions({ host, container, navigate: href => navigation.push(href),
       workspace: overrides.store || options.store || STORE,
-      requirement: overrides.requirement || REQUIREMENT,
-      role: { id: activeRole, label: activeRole, tasks: [], total: 0, complete: 0, state: 'backlog' } });
+      requirement: overrides.requirement || options.requirement || REQUIREMENT,
+      role: { id: activeRole, label: activeRole, specs: (overrides.requirement || options.requirement || REQUIREMENT).specs?.filter(spec => spec.role === activeRole).map(spec => spec.id), tasks: [], total: 0, complete: 0, state: 'backlog' } });
     disposers.add(dispose); currentDispose = dispose;
     return dispose;
   }
@@ -123,7 +125,7 @@ function setup(t, options = {}) {
     },
     fill(prompt, change = 'add-task-reminders') {
       query(`[aria-label="${activeRole} prompt"]`).value = prompt;
-      query(`[aria-label="${activeRole} new change name"]`).value = change;
+      query(`[aria-label="${activeRole} new feature name"]`).value = change;
     },
     submit() { query('form').dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true })); },
     dispatched() { return actions.filter(item => item.action === 'dispatch'); },
@@ -137,7 +139,7 @@ test('role controls are inert until opened, default to Apply, and probe without 
   assert.equal(app.requests.length, 0);
   assert.equal(app.query('summary').getAttribute('aria-label'), 'Run OpenSpec skill for SA');
   assert.equal(app.query('[aria-label="SA skill"]').value, 'apply');
-  assert.equal(app.query('[aria-label="SA new change name"]').parentElement.hidden, true);
+  assert.equal(app.query('[aria-label="SA new feature name"]').parentElement.hidden, true);
   assert.equal(app.query('[aria-label="SA prompt"]').required, false);
   assert.equal(app.button('Run SA Apply').disabled, true);
   await app.open();
@@ -173,7 +175,7 @@ for (const role of ROLES) for (const stage of STAGES) {
     const input = app.dispatched()[0].input;
     assert.deepEqual({ ...input, automation_id: undefined, request_id: undefined }, {
       stage, spec_store: STORE, requirement_id: REQUIREMENT.id, context_change: REQUIREMENT.change,
-      role, change: stage === 'propose' ? 'add-task-reminders' : REQUIREMENT.change, request: prompt,
+      role, change: REQUIREMENT.change, spec_id: `${PREFIXES[role]}-REQ-004-${stage === 'propose' ? 'add-task-reminders' : 'first'}`, request: prompt,
       automation_id: undefined, request_id: undefined,
     });
     assert.equal(input.automation_id, AUTOMATIONS.find(item => item.stage === stage && item.role === role).id);
@@ -193,7 +195,7 @@ test('invalid Propose and Update inputs cannot dispatch; switching skills update
   await app.open();
   for (const [stage, prompt, change] of [
     ['propose', '', 'new-change'], ['propose', 'Concrete work', ''], ['propose', 'Concrete work', '../outside'],
-    ['propose', 'Concrete work', REQUIREMENT.change], ['propose', 'x'.repeat(10001), 'new-change'],
+    ['propose', 'Concrete work', 'first'], ['propose', 'x'.repeat(10001), 'new-change'],
     ['update', ' \n ', 'ignored'], ['update', 'x'.repeat(10001), 'ignored'],
   ]) {
     app.select(stage); app.fill(prompt, change); app.submit();
@@ -348,5 +350,57 @@ test('late connection, dispatch and status results cannot recreate a disposed ro
     pending.resolve(output(value)); await settled(); await settled();
     assert.equal(app.container.childElementCount, 0);
     assert.deepEqual(app.navigation, []);
+  });
+});
+
+test('selecting a sibling spec dispatches its identity and restores the same run attribution', async t => {
+  const app = setup(t, { role: 'Frontend' });
+  await app.open();
+  const select = app.query('[aria-label="Frontend spec"]');
+  assert.equal(select.options.length, 2);
+  select.value = 'FE-REQ-004-second';
+  select.dispatchEvent(new app.dom.window.Event('change'));
+  app.submit();
+  await eventually(() => app.dispatched().length === 1 && app.query('a'));
+  assert.equal(app.dispatched()[0].input.spec_id, 'FE-REQ-004-second');
+  assert.match(app.query('[role="status"]').textContent, /FE-REQ-004-second/);
+  app.dispose(); app.mount({ role: 'Frontend' }); await app.open();
+  assert.equal(app.query('[aria-label="Frontend spec"]').value, 'FE-REQ-004-second');
+  assert.equal(app.query('[aria-label="Frontend spec"]').disabled, true);
+  assert.match(app.query('[role="status"]').textContent, /FE-REQ-004-second/);
+  assert.equal(app.dispatched().length, 1);
+});
+
+test('an earlier run retains its original spec identity when that spec is removed', async t => {
+  const app = setup(t);
+  await app.open(); app.submit();
+  await eventually(() => app.query('a'));
+  app.dispose();
+  app.mount({ requirement: { ...REQUIREMENT, specs: REQUIREMENT.specs.filter(spec => spec.id !== 'SA-REQ-004-first') } });
+  await app.open();
+  assert.match(app.query('[role="status"]').textContent, /SA-REQ-004-first/);
+  assert.equal(app.button('Run SA Apply').disabled, true);
+  assert.equal(app.dispatched().length, 1);
+});
+
+test('legacy metadata stays read-only and empty roles can explicitly propose a canonical spec', async t => {
+  await t.test('legacy', async child => {
+    const { specs, ...legacy } = REQUIREMENT;
+    const app = setup(child, { requirement: legacy });
+    await app.open(); app.submit(); await settled();
+    assert.equal(app.button('Run SA Apply').disabled, true);
+    assert.match(app.query('.osb-skill-help').textContent, /legacy.*Migrate/);
+    assert.equal(app.dispatched().length, 0);
+  });
+  await t.test('empty role', async child => {
+    const app = setup(child, { role: 'Backend', requirement: { ...REQUIREMENT, specs: [] } });
+    await app.open();
+    assert.equal(app.query('[aria-label="Backend skill"]').value, 'propose');
+    app.fill('Plan date validation', 'date-validation');
+    app.query('input').dispatchEvent(new app.dom.window.Event('input'));
+    assert.match(app.container.textContent, /New spec: BE-REQ-004-date-validation/);
+    app.submit(); await eventually(() => app.query('a'));
+    assert.equal(app.dispatched()[0].input.spec_id, 'BE-REQ-004-date-validation');
+    assert.equal(app.dispatched()[0].input.change, REQUIREMENT.change);
   });
 });

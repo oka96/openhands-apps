@@ -34,8 +34,18 @@ class BridgeTests(unittest.TestCase):
                        'skill_root': str(self.home), 'profile': 'saved-profile', 'timeout_seconds': 1800,
                        'canvas_url': 'http://127.0.0.1:8000'}
         (self.repository / 'role-workflow.json').write_text(json.dumps(self.config))
-        self.metadata = {'version': 1, 'requirements': [{'id': 'REQ-001', 'change': 'current-change',
-                         'roles': {role: {} for role in bridge.ROLES}}]}
+        self.metadata = {'version': 2, 'requirements': [{'id': 'REQ-001', 'change': 'current-change',
+                         'roles': {role: {'owner': 'Test', 'note': '', 'specs': [
+                             {'id': bridge.ROLE_PREFIXES[role] + '-REQ-001-' + feature, 'title': feature, 'state': 'backlog', 'note': ''}
+                             for feature in ('first', 'second')]} for role in bridge.ROLES}}]}
+        for role in bridge.ROLES:
+            for feature in ('first', 'second'):
+                spec_id = bridge.ROLE_PREFIXES[role] + '-REQ-001-' + feature
+                directory = self.context / 'specs' / spec_id
+                directory.mkdir(parents=True)
+                (directory / 'spec.md').write_text('# Spec')
+                (self.context / 'tasks').mkdir(exist_ok=True)
+                (self.context / 'tasks' / (spec_id + '.md')).write_text('- [ ] 1.1 [' + role + '] Work')
         self.metadata_path = self.store / 'openspec/requirements.json'
         self.metadata_path.write_text(json.dumps(self.metadata))
         for role, stage in bridge.PAIRS:
@@ -132,7 +142,8 @@ class BridgeTests(unittest.TestCase):
         row = next(item for item in self.automations if item['name'] == bridge.automation_name(role, stage))
         return {'automation_id': row['id'], 'request_id': identity(), 'stage': stage, 'spec_store': str(self.store),
                 'requirement_id': 'REQ-001', 'context_change': 'current-change', 'role': role,
-                'change': 'new-change' if stage == 'propose' else 'current-change', 'request': 'Explore 标签; $(never-run)'}
+                'spec_id': bridge.ROLE_PREFIXES[role] + '-REQ-001-' + ('new-feature' if stage == 'propose' else 'first'),
+                'change': 'current-change', 'request': 'Explore 标签; $(never-run)'}
 
     def count(self, route, method):
         return sum(url.split('/api/automation/v1', 1)[1] == route and verb == method for url, verb, *_ in self.calls)
@@ -197,6 +208,7 @@ class BridgeTests(unittest.TestCase):
         self.client.setup()
         data = self.input('apply', 'SA')
         data['role'] = 'Backend'
+        data['spec_id'] = 'BE-REQ-001-first'
         with self.assertRaisesRegex(bridge.BridgeError, 'Selected role automation'):
             self.client.dispatch(data)
         self.assertEqual(self.events, [])
@@ -250,7 +262,7 @@ class BridgeTests(unittest.TestCase):
         self.client.setup()
         data = self.input('propose')
         result = self.client.dispatch(data)
-        (self.store / 'openspec/changes/new-change').mkdir()
+        (self.context / 'specs/SA-REQ-001-new-feature').mkdir()
         self.assertEqual(self.client.dispatch(data), result)
         self.assertEqual(len(self.events), 1)
 
@@ -263,7 +275,7 @@ class BridgeTests(unittest.TestCase):
         with self.assertRaisesRegex(bridge.BridgeError, 'may already'):
             self.client.dispatch(data)
         with self.assertRaisesRegex(bridge.BridgeError, 'different inputs'):
-            self.client.dispatch({**data, 'role': 'QA'})
+            self.client.dispatch({**data, 'spec_id': 'SA-REQ-001-second'})
         self.assertEqual(len(self.events), 1)
 
     def test_partial_creation_recovers_known_tarball_without_duplicate_definition(self):
@@ -337,20 +349,59 @@ class BridgeTests(unittest.TestCase):
         for change in ({'role': 'Admin'}, {'stage': 'archive'}, {'request': ''}, {'request': 'x' * 10001},
                        {'spec_store': str(self.home)}, {'change': '../escape'}, {'context_change': 'other-change'},
                        {'requirement_id': 'REQ-999'}, {'automation_id': identity()}, {'profile': 'other'},
-                       {'request_id': '../escape'}, {'change': 'different-change'}):
+                       {'request_id': '../escape'}, {'change': 'different-change'},
+                       {'spec_id': 'FE-REQ-001-first'}, {'spec_id': 'SA-REQ-002-first'}, {'spec_id': 'SA-REQ-001-unregistered'}):
             with self.subTest(change=change), self.assertRaises(bridge.BridgeError):
                 self.client.dispatch({**self.input(), **change})
         self.assertFalse(self.events)
 
     def test_propose_refuses_existing_change_and_metadata_duplicates(self):
         self.client.setup()
-        (self.store / 'openspec/changes/new-change').mkdir()
+        (self.context / 'specs/SA-REQ-001-new-feature').mkdir()
         with self.assertRaisesRegex(bridge.BridgeError, 'overwrite'):
             self.client.dispatch(self.input('propose'))
         self.metadata['requirements'].append(copy.deepcopy(self.metadata['requirements'][0]))
         self.metadata_path.write_text(json.dumps(self.metadata))
-        with self.assertRaisesRegex(bridge.BridgeError, 'Duplicate store'):
+        with self.assertRaisesRegex(bridge.BridgeError, 'Duplicate or invalid store'):
             self.client.dispatch(self.input())
+
+    def test_second_spec_dispatch_is_distinct_and_stale_spec_is_rejected(self):
+        self.client.setup()
+        first = self.input('apply', 'Frontend')
+        second = {**first, 'request_id': identity(), 'spec_id': 'FE-REQ-001-second'}
+        self.client.dispatch(second)
+        self.assertEqual(self.events[-1]['spec_id'], 'FE-REQ-001-second')
+        self.metadata['requirements'][0]['roles']['Frontend']['specs'].pop()
+        self.metadata_path.write_text(json.dumps(self.metadata))
+        with self.assertRaisesRegex(bridge.BridgeError, 'no longer matches'):
+            self.client.dispatch({**second, 'request_id': identity()})
+        self.assertEqual(len(self.events), 1)
+
+    def test_v2_reconnect_updates_existing_filters_and_preserves_all_ids(self):
+        self.client.setup()
+        ids = [row['id'] for row in self.automations]
+        secret = self.secret
+        for row in self.automations:
+            row['trigger']['filter'] = row['trigger']['filter'].replace('/v2', '/v1')
+        self.assertFalse(self.client.probe()['ready'])
+        self.assertTrue(self.client.setup()['ready'])
+        self.assertEqual([row['id'] for row in self.automations], ids)
+        self.assertEqual(self.secret, secret)
+        self.assertTrue(all('/v2' in row['trigger']['filter'] for row in self.automations))
+        self.assertFalse(self.events)
+
+    def test_legacy_metadata_and_wrong_role_registered_spec_cannot_dispatch(self):
+        self.client.setup()
+        self.metadata['version'] = 1
+        self.metadata_path.write_text(json.dumps(self.metadata))
+        with self.assertRaisesRegex(bridge.BridgeError, 'metadata v2'):
+            self.client.dispatch(self.input())
+        self.metadata['version'] = 2
+        self.metadata['requirements'][0]['roles']['SA']['specs'][0]['id'] = 'FE-REQ-001-first'
+        self.metadata_path.write_text(json.dumps(self.metadata))
+        with self.assertRaisesRegex(bridge.BridgeError, 'wrong-role'):
+            self.client.dispatch(self.input())
+        self.assertFalse(self.events)
 
     def test_symlinked_metadata_and_tampered_generated_bundle_are_rejected(self):
         original = self.home / 'metadata.json'

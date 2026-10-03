@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { JSDOM } from 'jsdom';
 import { activate } from '../extension.js';
+import { roleSpecsFixture } from './helpers/role-specs.mjs';
 
 const DEFAULT_STORE = '/Users/oka/Desktop/openspec-store';
 const BASE = '/extensions/openspec-progress/progress';
@@ -148,6 +149,63 @@ function setup(t, options = {}) {
     },
   };
 }
+
+test('role specs show independent progress and exact selectable sources across refresh', async t => {
+  const fixture = await roleSpecsFixture(t);
+  const app = setup(t, { path: 'requirements/REQ-001',
+    storage: { 'openhands.apps.openspec-progress:v3:local-main:store': fixture.cwd },
+    request: async () => output(await fixture.run()) });
+  await settled(); await settled();
+  assert.equal(app.all('.osb-role-spec').length, 5);
+  assert.equal(app.query('.osb-completion strong').textContent, '3 of 4 roles complete');
+  assert.equal(app.all('.osb-spec-count')[1].textContent, '1 / 2 specs complete');
+  app.change('[aria-label="Artifact spec"]', 'FE-REQ-001-filters');
+  assert.equal(app.query('.osb-markdown h1').textContent, 'Frontend filters');
+  assert.match(app.query('.osb-artifact-path').textContent, /specs\/FE-REQ-001-filters\/spec.md$/);
+  app.button('Tasks').click(); app.button('Source').click();
+  assert.equal(app.query('.osb-artifact-source').textContent, '# Tasks\n\n- [ ] 1.1 [Frontend] Verify Frontend filters\n');
+  app.change('[aria-label="Artifact spec"]', 'FE-REQ-001-labels');
+  assert.match(app.query('.osb-artifact-source').textContent, /\[x\].*Frontend labels/);
+  assert.equal(app.calls.length, 1);
+  app.button('Refresh').click(); await settled(); await settled();
+  assert.equal(app.query('[aria-label="Artifact spec"]').value, 'FE-REQ-001-labels');
+  assert.match(app.query('.osb-artifact-source').textContent, /Frontend labels/);
+  assert.equal(app.button('Source').getAttribute('aria-pressed'), 'true');
+  app.button('QA-REQ-001-labels').click();
+  assert.match(app.query('.osb-artifact-source').textContent, /Contract for QA-REQ-001-labels/);
+  assert.equal(app.document.activeElement, app.query('[aria-label="Artifact spec"]'));
+  app.button('Proposal').click();
+  assert.match(app.query('.osb-artifact-source').textContent, /Shared proposal/);
+  assert.equal(app.calls.length, 2, 'Only the explicit store refresh makes another request');
+});
+
+test('board search matches spec identity and title while counting parent requirements', async t => {
+  const fixture = await roleSpecsFixture(t);
+  const app = setup(t, { storage: { 'openhands.apps.openspec-progress:v3:local-main:store': fixture.cwd },
+    request: async () => output(await fixture.run()) });
+  await settled(); await settled();
+  for (const query of ['FE-REQ-001-filters', 'Frontend filters']) {
+    app.change('[aria-label="Search requirements"]', query, 'input');
+    assert.equal(app.all('.osb-card').length, 1);
+    assert.match(app.query('.osb-card-foot').textContent, /5 specs/);
+  }
+  app.change('[aria-label="Search requirements"]', 'FE-REQ-001-missing', 'input');
+  assert.equal(app.all('.osb-card').length, 0);
+  assert.equal(app.calls.length, 1);
+});
+
+test('a role without specs has an explicit incomplete state and retains shared sources', async t => {
+  const fixture = await roleSpecsFixture(t);
+  await fixture.removeRole('SA');
+  const app = setup(t, { path: 'requirements/REQ-001',
+    storage: { 'openhands.apps.openspec-progress:v3:local-main:store': fixture.cwd },
+    request: async () => output(await fixture.run()) });
+  await settled(); await settled();
+  assert.match(app.query('.osb-pipeline').textContent, /No specs yet/);
+  assert.match(app.query('.osb-content').textContent, /SA has no registered specs/);
+  assert.equal(app.query('.osb-completion strong').textContent, '2 of 4 roles complete');
+  assert.equal(app.query('.osb-markdown h1').textContent, 'Shared proposal');
+});
 
 test('manifest identity registers the native page and all six Kanban lanes', async t => {
   const manifest = JSON.parse(await readFile(new URL('../canvas-extension.json', import.meta.url), 'utf8'));

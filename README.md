@@ -1,9 +1,10 @@
 # OpenSpec Kanban for OpenHands
 
 A native **Apps for Agent Canvas** page showing requirement delivery across
-**SA, Frontend, Backend, and QA**. Each requirement has all four roles. A requirement
-reaches **Done** only when every role has tasks, every role task is checked, and
-there are no unfinished unassigned tasks.
+**SA, Frontend, Backend, and QA**. Each requirement has all four roles, and each
+role can own several feature specs. A requirement reaches **Done** only when
+every role has specs and every spec has its specification and a nonempty,
+fully checked task list.
 
 The redesigned app keeps the `openspec-progress` identity and `/progress` route.
 Its source and built entrypoint live in this repository. The sample store lives
@@ -19,9 +20,10 @@ the connected Agent Server.
 - **Board** groups requirements into Backlog, Solution design, Implementation,
   Verification, Blocked, and Done.
 - **List** gives a compact cross-requirement comparison.
-- Search by ID, title, summary, or change name; filter by an unfinished role.
-- Open a card to see all four owners, role checklists, notes, and the original
-  proposal, design, specification, and task files.
+- Search by requirement or spec ID/title, summary, or change name; filter by an unfinished role.
+- Open a card to see all four owners and each role's named specs, progress, notes,
+  and checklists. Select a spec ID or use **Role spec** above the artifact viewer
+  to inspect its specification and tasks. Proposal and Design are shared context.
 - Documents open in **Preview** with formatted Markdown. Select **Source** to
   inspect the exact text. Your choice stays selected when switching documents
   or refreshing the requirement.
@@ -59,9 +61,9 @@ The panel shows the configured code project and spec store.
 
 Choose a skill and supply one prompt:
 
-- **Propose** requires a new kebab-case change name and prompt. It plans a distinct requirement from the selected role's perspective, includes tasks for all four roles, and adds the validated proposal to the board.
-- **Update** requires a revision prompt for the current requirement. Submitting authorizes the stated planning edits. It stops before implementation.
-- **Apply** works through only the selected role's pending tasks. Its prompt is optional and can narrow the work or add constraints; required verification still applies.
+- **Propose** requires a new feature slug and prompt. It derives the role spec ID, plans that spec, and registers it under the selected requirement after validation.
+- **Update** requires a selected spec and revision prompt. Submitting authorizes the stated edits to that spec and its tasks. It stops before implementation.
+- **Apply** works through the selected spec's pending tasks. Its prompt is optional and can narrow the work or add constraints; required verification still applies.
 
 Press **Run <role> <skill>** to create one native automation run. Open its run or
 conversation to inspect results, or use **Refresh run status**. Refresh the
@@ -71,10 +73,9 @@ stage, commit, push, archive, or deploy. Missing decisions or tool approvals app
 as blocked results for the user to resolve.
 
 New conversations have native `requirement`, `role`, `openspecstage`, and
-`openspecskill` tags so you can identify their origin in OpenHands. Propose tags
-the selected context requirement and records the new change in `openspecchange`.
-Their titles use `[Role] <OpenSpec change name>`, for example
-`[SA] add-task-quick-capture`. Propose uses the proposed new change name.
+`openspecskill`, and `openspecspec` tags so you can identify their origin in
+OpenHands. `openspecchange` retains the parent change name. Titles use
+`[Role] <spec ID>`, for example `[SA] SA-REQ-002-date-contract`.
 
 Targets are fixed in
 `/Users/oka/Desktop/openhands-automation/role-workflow.json`: code and skills default
@@ -84,8 +85,8 @@ rebuild the automation bundles, then reconnect to change targets. Per-run prompt
 cannot override paths or model profiles. Other board stores remain readable but
 cannot dispatch against mismatched configuration.
 
-Run and request references are stored per backend, store, requirement and role;
-prompt text is not saved in browser storage. If a submission outcome is uncertain,
+Run and request references are stored per backend, store, requirement and role,
+and retain the exact selected spec ID; prompt text is not saved in browser storage. If a submission outcome is uncertain,
 inspect Automation history before starting another run. Setup and dispatch are
 journaled server-side to avoid blindly repeating side effects.
 
@@ -96,12 +97,15 @@ starts. Connect browser and desktop clients to the same retained backend.
 
 ## Progress contract
 
-`openspec/requirements.json` is the versioned index. A requirement references one
-active change; its task completion is read from that change's `tasks.md`:
+`openspec/requirements.json` version 2 groups role specs under each requirement.
+The existing lowercase `change` is the requirement's container. Role prefixes
+are `SA`, `FE`, `BE`, and `QA`; requirement IDs use `REQ-` followed by at least
+three digits. Feature suffixes are lowercase kebab-case. Spec IDs must match
+their role and exact parent requirement.
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "name": "My spec store",
   "description": "Delivery requirements",
   "requirements": [{
@@ -110,30 +114,47 @@ active change; its task completion is read from that change's `tasks.md`:
     "summary": "Keep task context alongside its title.",
     "change": "add-task-descriptions",
     "roles": {
-      "SA": { "owner": "Solution Architecture", "state": "in_progress", "note": "Reviewing scope." },
-      "Frontend": { "owner": "Web team", "state": "backlog", "note": "" },
-      "Backend": { "owner": "API team", "state": "backlog", "note": "" },
-      "QA": { "owner": "Quality team", "state": "backlog", "note": "" }
+      "SA": { "owner": "Solution Architecture", "note": "Reviewing scope.", "specs": [
+        { "id": "SA-REQ-001-description-contract", "title": "Description contract", "state": "in_progress", "note": "" }
+      ] },
+      "Frontend": { "owner": "Web team", "note": "", "specs": [
+        { "id": "FE-REQ-001-description-editor", "title": "Description editor", "state": "backlog", "note": "" },
+        { "id": "FE-REQ-001-description-preview", "title": "Description preview", "state": "backlog", "note": "" }
+      ] },
+      "Backend": { "owner": "API team", "note": "", "specs": [] },
+      "QA": { "owner": "Quality team", "note": "", "specs": [] }
     }
   }]
 }
 ```
 
-```markdown
-- [x] 1.1 [SA] Agree the acceptance scenarios.
-- [ ] 1.2 [SA] Review the interface contract.
-- [ ] 2.1 [Frontend] Implement the description editor.
-- [ ] 3.1 [Backend] Validate description updates.
-- [ ] 4.1 [QA] Verify the end-to-end description flow.
+Each named spec has two files inside its requirement's change:
+
+```text
+specs/FE-REQ-001-description-editor/spec.md
+tasks/FE-REQ-001-description-editor.md
 ```
 
-Role names are exact: `SA`, `Frontend`, `Backend`, `QA`. The board derives
-`done` from checkboxes, so the metadata accepts only `backlog`, `in_progress`,
-and `blocked`. Partial completion implies in progress unless the role is blocked.
-An unfinished blocked role takes precedence over every other stage. SA must
+The task file contains only its owning role's tasks, for example
+`- [ ] 1.1 [Frontend] Implement and verify the description editor.` Local task
+numbers can repeat in other specs. Shared `proposal.md` and `design.md` stay at
+the change root. The store's local `role-specs` workflow tracks `tasks/*.md`.
+
+Role names are exact: `SA`, `Frontend`, `Backend`, `QA`. Spec state hints accept
+only `backlog`, `in_progress`, and `blocked`; `done` is derived. Partial completion
+implies in progress unless the spec is blocked. A role finishes only after all
+its specs finish; a checked sibling cannot hide an empty or missing task list.
+An unfinished blocked spec takes precedence over every other stage. SA must
 finish before the stage becomes Implementation; both Frontend and Backend must
-finish before Verification. Missing role tasks remain incomplete and show warnings.
+finish before Verification. Empty roles and missing source files remain incomplete and show warnings.
 Checklists, source paths, and warnings are always visible in details.
+Active spec directories and task files must be registered in the index. The board
+rejects unregistered sources so its progress cannot silently omit CLI-tracked work.
+
+Version 1 stores remain readable; role actions require migration to version 2.
+The configured sample store includes a repeatable migration and retains its
+original artifacts in `legacy/` directories. REQ-003 demonstrates two specs per
+role; REQ-002 retains its Solution Design progress.
 
 ## Install or update
 
@@ -189,8 +210,9 @@ advertised Automation service (1.15.1). Cloud backends are not supported.
 The collector embeds a fixed read-only Node program, uses structured `cwd`,
 validates source paths and data, and bounds files/output. It never reads `.local`
 or browser credentials. Symlink aliases and path traversal are rejected.
-Limits: 50 requirements, 500 tasks per requirement, 64 KiB per Markdown file,
-128 KiB metadata/combined specifications, and 512 KiB aggregate response.
+Limits: 50 requirements, 20 specs and 500 tasks per requirement, 160 characters
+per spec ID, 64 KiB per Markdown file, 128 KiB metadata (and combined v1 specs),
+and 512 KiB aggregate response.
 
 The store directory and role-run references are remembered in browser storage,
 separately per backend. Filters survive navigation within an activation. A failed refresh

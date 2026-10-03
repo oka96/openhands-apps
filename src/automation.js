@@ -18,16 +18,18 @@ const text = (value, max) => typeof value === 'string' && value.length <= max &&
 const requireValue = (condition, message) => { if (!condition) throw new Error(message); };
 
 export function validateRoleInput(input) {
-  const fields = ['stage', 'spec_store', 'requirement_id', 'context_change', 'role', 'change', 'request'];
+  const fields = ['stage', 'spec_store', 'requirement_id', 'context_change', 'role', 'spec_id', 'change', 'request'];
   const withIds = object(input) && (Object.hasOwn(input, 'automation_id') || Object.hasOwn(input, 'request_id'));
   requireValue(exact(input, withIds ? [...fields, 'automation_id', 'request_id'] : fields), 'Invalid role automation input fields.');
   requireValue(STAGES.includes(input.stage) && ROLES.includes(input.role), 'Choose a supported role and OpenSpec skill.');
   requireValue(path(input.spec_store), 'Load an absolute local spec store directory first.');
   requireValue(typeof input.requirement_id === 'string' && input.requirement_id.length <= 64 &&
-    /^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*$/.test(input.requirement_id), 'Choose a valid requirement.');
+    /^REQ-[0-9]{3,}$/.test(input.requirement_id), 'Choose a valid requirement.');
   requireValue(slug(input.context_change) && slug(input.change), 'Enter a kebab-case change name of at most 100 characters.');
-  requireValue(input.stage === 'propose' ? input.change !== input.context_change : input.change === input.context_change,
-    input.stage === 'propose' ? 'Propose needs a new change name.' : 'Update and Apply must use this requirement’s change.');
+  requireValue(input.change === input.context_change, 'Role actions must use this requirement’s change.');
+  const prefix = `${{ SA: 'SA', Frontend: 'FE', Backend: 'BE', QA: 'QA' }[input.role]}-${input.requirement_id}-`;
+  requireValue(typeof input.spec_id === 'string' && input.spec_id.length <= 160 && input.spec_id.startsWith(prefix) &&
+    SLUG.test(input.spec_id.slice(prefix.length)), 'Choose a spec belonging to this requirement and role.');
   requireValue(text(input.request, 10000) && (input.stage === 'apply' || input.request.trim().length > 0),
     'Enter a prompt of at most 10000 characters. Propose and Update require a prompt.');
   if (withIds) requireValue(uuid(input.automation_id) && uuid(input.request_id), 'Invalid automation or request ID.');

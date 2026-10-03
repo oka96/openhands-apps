@@ -114,6 +114,15 @@
 .osb-role-panel h3 { font-size:13px; font-weight:700; margin-bottom:5px; }
 .osb-owner { color:var(--muted); font-size:11px; margin-bottom:16px!important; }
 .osb-task-count { font-size:10px; color:var(--muted); margin-top:5px!important; }
+.osb-spec-count { font-size:11px; font-weight:650; margin-top:14px!important; }
+.osb-role-spec { margin-top:16px; padding-top:16px; border-top:1px solid var(--border); }
+.osb-role-spec h4 { font-size:12px; margin:7px 0 10px; }
+.osb-spec-link { border:0; background:transparent; color:var(--accent); text-align:left; font:600 10px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace; padding:0; overflow-wrap:anywhere; cursor:pointer; }
+.osb-spec-progress { display:block; font-size:10px; color:var(--muted); margin-top:8px; }
+.osb-role-spec .osb-checklist { border:0; margin-top:8px; }
+.osb-checklist small { overflow-wrap:anywhere; }
+.osb-artifact-spec { display:grid; gap:7px; flex-basis:100%; min-width:0; }
+.osb-spec-select { width:100%; min-width:0; max-width:100%; border:1px solid var(--border); border-radius:6px; padding:9px; background:white; color:var(--ink); font:12px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
 .osb-role-note { margin:15px 0!important; font-size:11px; color:var(--muted); min-height:33px; }
 .osb-checklist { list-style:none; padding:0; margin:16px 0 0; border-top:1px solid #edf0f4; }
 .osb-checklist li { display:flex; gap:9px; font-size:11px; margin-top:14px; line-height:1.6; }

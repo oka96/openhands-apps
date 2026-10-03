@@ -24,9 +24,10 @@ import uuid
 
 REPOSITORY = Path('/Users/oka/Desktop/openhands-automation')
 SOURCE = 'openspec-role-dashboard'
-SCHEMA = SOURCE + '/v1'
+SCHEMA = SOURCE + '/v2'
 STAGES = ('propose', 'update', 'apply')
 ROLES = ('SA', 'Frontend', 'Backend', 'QA')
+ROLE_PREFIXES = {'SA': 'SA', 'Frontend': 'FE', 'Backend': 'BE', 'QA': 'QA'}
 PAIRS = tuple((role, stage) for role in ROLES for stage in STAGES)
 STATUSES = ('PENDING', 'RUNNING', 'COMPLETED', 'FAILED', 'CANCELLED', 'SKIPPED')
 BUNDLE_FILES = ('config.json', 'prompt.md', 'run.py')
@@ -419,38 +420,66 @@ class Bridge:
             return self.result('setup', True, selected)
 
     def validate_input(self, data, *, context=True):
-        fields = {'automation_id', 'request_id', 'stage', 'spec_store', 'requirement_id', 'context_change', 'role', 'change', 'request'}
+        fields = {'automation_id', 'request_id', 'stage', 'spec_store', 'requirement_id', 'context_change', 'role', 'spec_id', 'change', 'request'}
         require(isinstance(data, dict) and set(data) == fields, 'Unexpected role automation input fields')
         require(identifier(data['automation_id']) and identifier(data['request_id']), 'Invalid automation or request ID')
         require(data['stage'] in STAGES and data['role'] in ROLES, 'Unsupported OpenSpec skill or role')
         require(local_path(data['spec_store']) == Path(self.config['spec_store']), 'Selected store does not match the configured role workflow')
-        require(isinstance(data['requirement_id'], str) and len(data['requirement_id']) <= 64
-                and re.fullmatch(r'[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*', data['requirement_id']), 'Invalid requirement ID')
-        require(slug(data['change']) and slug(data['context_change']), 'Change names must be kebab-case')
+        require(isinstance(data['requirement_id'], str) and re.fullmatch(r'REQ-[0-9]{3,}', data['requirement_id']), 'Invalid requirement ID')
+        prefix = ROLE_PREFIXES[data['role']] + '-' + data['requirement_id'] + '-'
+        require(isinstance(data['spec_id'], str) and len(data['spec_id']) <= 160 and data['spec_id'].startswith(prefix)
+                and re.fullmatch(r'[a-z0-9]+(?:-[a-z0-9]+)*', data['spec_id'][len(prefix):]), 'Spec ID must match the requirement and role')
+        require(slug(data['change']) and slug(data['context_change']) and data['change'] == data['context_change'],
+                'Role actions must use the requirement context change')
         require(isinstance(data['request'], str) and len(data['request']) <= 10000 and '\x00' not in data['request']
                 and (data['stage'] == 'apply' or data['request'].strip()), 'Propose and Update require a prompt; maximum 10000 characters')
-        require(data['change'] != data['context_change'] if data['stage'] == 'propose' else data['change'] == data['context_change'],
-                'The change name does not match the selected OpenSpec skill')
         if not context:
             return
         store = Path(self.config['spec_store'])
         metadata = read_json(store / 'openspec/requirements.json')
-        rows = metadata.get('requirements') if isinstance(metadata, dict) and type(metadata.get('version')) is int and metadata['version'] == 1 else None
-        require(isinstance(rows, list) and 0 < len(rows) <= 50 and all(isinstance(row, dict) and isinstance(row.get('id'), str)
-                and isinstance(row.get('change'), str) for row in rows), 'Invalid store requirement metadata')
-        require(len({row.get('id') for row in rows}) == len(rows) and len({row.get('change') for row in rows}) == len(rows), 'Duplicate store requirements')
-        matches = [row for row in rows if row.get('id') == data['requirement_id']]
-        require(len(matches) == 1 and matches[0].get('change') == data['context_change']
-                and isinstance(matches[0].get('roles'), dict) and data['role'] in matches[0]['roles'],
-                'The requirement, role, or context change no longer matches the store')
-        context = store / 'openspec/changes' / data['context_change']
-        require(context.resolve() == context and context.is_dir(), 'The requirement context change is missing or symlinked')
+        rows = metadata.get('requirements') if isinstance(metadata, dict) and type(metadata.get('version')) is int and metadata['version'] == 2 else None
+        require(isinstance(rows, list) and 0 < len(rows) <= 50, 'Role actions require store metadata v2')
+        ids, changes, spec_ids = set(), set(), set()
+        for row in rows:
+            require(isinstance(row, dict) and isinstance(row.get('id'), str) and re.fullmatch(r'REQ-[0-9]{3,}', row['id'])
+                    and slug(row.get('change')) and row['id'] not in ids and row['change'] not in changes
+                    and isinstance(row.get('roles'), dict) and set(row['roles']) == set(ROLES), 'Duplicate or invalid store requirements')
+            ids.add(row['id'])
+            changes.add(row['change'])
+            count = 0
+            for role, entry in row['roles'].items():
+                require(isinstance(entry, dict) and set(entry) == {'owner', 'note', 'specs'}
+                        and isinstance(entry['owner'], str) and isinstance(entry['note'], str)
+                        and isinstance(entry['specs'], list), 'Invalid role spec metadata')
+                count += len(entry['specs'])
+                for spec in entry['specs']:
+                    expected = ROLE_PREFIXES[role] + '-' + row['id'] + '-'
+                    require(isinstance(spec, dict) and set(spec) == {'id', 'title', 'state', 'note'}
+                            and isinstance(spec['id'], str) and len(spec['id']) <= 160 and spec['id'].startswith(expected)
+                            and re.fullmatch(r'[a-z0-9]+(?:-[a-z0-9]+)*', spec['id'][len(expected):])
+                            and spec['id'] not in spec_ids and isinstance(spec['title'], str) and 0 < len(spec['title'].strip()) <= 200
+                            and spec['state'] in ('backlog', 'in_progress', 'blocked') and isinstance(spec['note'], str),
+                            'Invalid, duplicate or wrong-role spec metadata')
+                    spec_ids.add(spec['id'])
+            require(count <= 20, 'A requirement may contain at most 20 specs')
+        matches = [row for row in rows if row['id'] == data['requirement_id']]
+        require(len(matches) == 1 and matches[0]['change'] == data['context_change'],
+                'The requirement or context change no longer matches the store')
+        requirement = matches[0]
+        root = store / 'openspec/changes' / data['change']
+        require(root.resolve() == root and root.is_dir(), 'The requirement context change is missing or symlinked')
+        spec_root = root / 'specs' / data['spec_id']
+        task = root / 'tasks' / (data['spec_id'] + '.md')
+        require(spec_root.resolve() == spec_root and task.resolve() == task, 'Spec artifacts must not use symlinks')
+        registered = any(spec['id'] == data['spec_id'] for spec in requirement['roles'][data['role']]['specs'])
         if data['stage'] == 'propose':
-            require(data['change'] != data['context_change'], 'Propose requires a new change name')
-            target = store / 'openspec/changes' / data['change']
-            require(not target.exists() and not target.is_symlink(), 'Propose refuses to overwrite an existing change')
+            require(data['spec_id'] not in spec_ids and not spec_root.exists() and not spec_root.is_symlink()
+                    and not task.exists() and not task.is_symlink(), 'Propose refuses to overwrite an existing spec')
+            require(sum(len(role['specs']) for role in requirement['roles'].values()) < 20, 'The requirement has reached its 20 spec limit')
         else:
-            require(data['change'] == data['context_change'], 'Update and Apply must use the requirement context change')
+            require(registered, 'The requirement, role or spec no longer matches the store; refresh the board')
+            read_bytes(spec_root / 'spec.md', 64 * 1024)
+            read_bytes(task, 64 * 1024)
 
     def dispatch(self, data):
         self.validate_input(data, context=False)

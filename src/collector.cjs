@@ -6,6 +6,7 @@ const path = require('node:path');
 
 const ROLE_IDS = ['SA', 'Frontend', 'Backend', 'QA'];
 const ROLE_LABELS = ['Solution Architect', 'Frontend', 'Backend', 'Quality Assurance'];
+const ROLE_PREFIX = { SA: 'SA', Frontend: 'FE', Backend: 'BE', QA: 'QA' };
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const REQUIREMENT_ID = /^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*$/;
 const MAX_FILE = 64 * 1024;
@@ -64,7 +65,7 @@ function readFile(target, root, limit = MAX_FILE) {
 }
 
 function validateMetadata(value) {
-  requireValue(object(value) && fields(value, ['version', 'name', 'description', 'requirements']) && value.version === 1
+  requireValue(object(value) && fields(value, ['version', 'name', 'description', 'requirements']) && [1, 2].includes(value.version)
     && text(value.name, 200) && text(value.description, 4000, true) && Array.isArray(value.requirements)
     && value.requirements.length <= MAX_REQUIREMENTS, 'Invalid openspec/requirements.json store metadata.');
   for (const item of value.requirements) {
@@ -72,6 +73,24 @@ function validateMetadata(value) {
       && text(item.id, 64) && REQUIREMENT_ID.test(item.id) && text(item.title, 200) && text(item.summary, 4000, true)
       && text(item.change, 100) && SLUG.test(item.change)
       && object(item.roles) && fields(item.roles, ROLE_IDS), 'Invalid requirement metadata.');
+    if (value.version === 2) {
+      requireValue(/^REQ-[0-9]{3,}$/.test(item.id) && ROLE_IDS.every(id => Object.hasOwn(item.roles, id)), 'Invalid requirement ID or missing role metadata.');
+      let specs = 0;
+      for (const [id, role] of Object.entries(item.roles)) {
+        requireValue(object(role) && fields(role, ['owner', 'note', 'specs']) && text(role.owner, 200)
+          && text(role.note, 4000, true) && Array.isArray(role.specs), 'Invalid role-spec metadata.');
+        specs += role.specs.length;
+        for (const spec of role.specs) {
+          const prefix = `${ROLE_PREFIX[id]}-${item.id}-`;
+          requireValue(object(spec) && fields(spec, ['id', 'title', 'state', 'note']) && text(spec.id, 160)
+            && spec.id.startsWith(prefix) && SLUG.test(spec.id.slice(prefix.length)) && text(spec.title, 200)
+            && ['backlog', 'in_progress', 'blocked'].includes(spec.state) && text(spec.note, 4000, true),
+          'Invalid spec identity, role ownership, or spec metadata.');
+        }
+      }
+      requireValue(specs <= 20, 'A requirement exceeded the 20-spec limit.');
+      continue;
+    }
     for (const role of Object.values(item.roles)) {
       requireValue(object(role) && fields(role, ['owner', 'state', 'note']) && text(role.owner, 200)
         && ['backlog', 'in_progress', 'blocked'].includes(role.state) && text(role.note, 4000, true), 'Invalid requirement role metadata.');
@@ -79,6 +98,7 @@ function validateMetadata(value) {
   }
   unique(value.requirements.map(item => item.id), 'Duplicate requirement IDs in store metadata.');
   unique(value.requirements.map(item => item.change), 'Multiple requirements point to the same change.');
+  if (value.version === 2) unique(value.requirements.flatMap(item => Object.values(item.roles).flatMap(role => role.specs.map(spec => spec.id))), 'Duplicate spec IDs in store metadata.');
   return value;
 }
 
@@ -187,6 +207,61 @@ function requirement(item, workspace) {
     tasks, warnings, artifacts };
 }
 
+function requirementWithSpecs(item, workspace) {
+  const root = path.join(workspace, 'openspec', 'changes', item.change);
+  safePath(root, workspace);
+  const registered = new Set(ROLE_IDS.flatMap(role => item.roles[role].specs.map(spec => spec.id)));
+  for (const kind of ['specs', 'tasks']) {
+    const directory = path.join(root, kind);
+    if (!safePath(directory, workspace)) continue;
+    requireValue(fs.statSync(directory).isDirectory(), `Expected a ${kind} directory.`);
+    const entries = fs.readdirSync(directory, { withFileTypes: true });
+    requireValue(entries.length <= 500, 'A requirement exceeded the source directory entry limit.');
+    for (const entry of entries) {
+      const tracked = kind === 'specs' ? entry.isDirectory() || entry.isSymbolicLink() : entry.name.endsWith('.md');
+      if (!tracked) continue;
+      const id = kind === 'specs' ? entry.name : entry.name.slice(0, -3);
+      requireValue(!entry.isSymbolicLink() && (kind !== 'tasks' || entry.isFile()), 'Symlinked or irregular role spec source paths are not supported.');
+      requireValue(registered.has(id), `Unregistered ${kind} source ${entry.name} in ${item.id}; register the role spec or move the source outside the active schema paths.`);
+    }
+  }
+  const warnings = [];
+  const artifacts = ['proposal', 'design'].map(id => artifact(id, path.join(root, `${id}.md`), workspace, warnings));
+  const specs = ROLE_IDS.flatMap(role => item.roles[role].specs.map(metadata => {
+    const ownWarnings = [];
+    const ownArtifacts = [artifact('specs', path.join(root, 'specs', metadata.id, 'spec.md'), workspace, ownWarnings),
+      artifact('tasks', path.join(root, 'tasks', `${metadata.id}.md`), workspace, ownWarnings)];
+    const tasks = parseTasks(ownArtifacts[1].content, ownArtifacts[1].path).map(task => ({ ...task, specId: metadata.id }));
+    requireValue(tasks.every(task => task.role === role), `Every task in ${metadata.id} must have its owning [${role}] role tag.`);
+    const complete = tasks.filter(task => task.done).length;
+    if (!tasks.length) ownWarnings.push('No tracked tasks; completion is unverified.');
+    if (!ownArtifacts[0].content.trim()) ownWarnings.push('Specification content is missing or empty; completion is unverified.');
+    const state = tasks.length && complete === tasks.length && ownArtifacts[0].content.trim() ? 'done'
+      : metadata.state === 'blocked' ? 'blocked' : complete || metadata.state === 'in_progress' ? 'in_progress' : 'backlog';
+    warnings.push(...ownWarnings.map(warning => `${metadata.id}: ${warning}`));
+    return { id: metadata.id, title: metadata.title, role, state, note: metadata.note,
+      complete, total: tasks.length, tasks, artifacts: ownArtifacts, warnings: ownWarnings };
+  }));
+  const tasks = specs.flatMap(spec => spec.tasks);
+  requireValue(tasks.length <= MAX_TASKS, 'A requirement exceeded the 500-task limit.');
+  const roles = ROLE_IDS.map((id, index) => {
+    const ownSpecs = specs.filter(spec => spec.role === id);
+    const ownTasks = ownSpecs.flatMap(spec => spec.tasks);
+    if (!ownSpecs.length) warnings.push(`${id} has no registered specs; completion is unverified.`);
+    const state = ownSpecs.length && ownSpecs.every(spec => spec.state === 'done') ? 'done'
+      : ownSpecs.some(spec => spec.state === 'blocked') ? 'blocked'
+        : ownSpecs.some(spec => ['done', 'in_progress'].includes(spec.state)) ? 'in_progress' : 'backlog';
+    return { id, label: ROLE_LABELS[index], owner: item.roles[id].owner, note: item.roles[id].note, state,
+      specs: ownSpecs.map(spec => spec.id), tasks: ownTasks, complete: ownTasks.filter(task => task.done).length, total: ownTasks.length };
+  });
+  const rolesComplete = roles.filter(role => role.state === 'done').length;
+  const stage = roles.some(role => role.state === 'blocked') ? 'blocked' : rolesComplete === 4 ? 'done'
+    : roles.every(role => role.state === 'backlog') ? 'backlog' : roles[0].state !== 'done' ? 'sa'
+      : roles[1].state !== 'done' || roles[2].state !== 'done' ? 'implementation' : 'qa';
+  return { id: item.id, title: item.title, summary: item.summary, change: item.change, stage, roles,
+    complete: tasks.filter(task => task.done).length, total: tasks.length, rolesComplete, tasks, warnings, artifacts, specs };
+}
+
 function errorResult(error) {
   return { version: 1, kind: 'error', message: error instanceof CollectorError ? error.message : 'Could not read the local OpenSpec store. Check its directory and file permissions.' };
 }
@@ -202,8 +277,9 @@ async function collect(input, { cwd = process.cwd() } = {}) {
     let metadata;
     try { metadata = JSON.parse(raw); } catch { throw new CollectorError('openspec/requirements.json is not valid JSON.'); }
     validateMetadata(metadata);
-    const result = { version: 1, kind: 'board', workspace, name: metadata.name, description: metadata.description,
-      generatedAt: new Date().toISOString(), requirements: metadata.requirements.map(item => requirement(item, workspace)) };
+    const result = { version: metadata.version, kind: 'board', workspace, name: metadata.name, description: metadata.description,
+      generatedAt: new Date().toISOString(), requirements: metadata.requirements.map(item =>
+        metadata.version === 2 ? requirementWithSpecs(item, workspace) : requirement(item, workspace)) };
     requireValue(Buffer.byteLength(JSON.stringify(result), 'utf8') <= MAX_OUTPUT, 'Store data exceeded the 512 KiB output limit.');
     return result;
   } catch (error) { return errorResult(error); }

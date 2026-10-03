@@ -3,9 +3,9 @@ import { callRoleAutomation, validateRoleInput } from './automation.js';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const SKILLS = { propose: 'Propose', update: 'Update', apply: 'Apply' };
 const HELP = {
-  propose: 'Plan a new requirement from this role’s perspective, with tasks for all four roles. Stops before implementation.',
-  update: 'Revise this requirement’s planning artifacts. Submitting authorizes the edits described in your prompt. Stops before implementation.',
-  apply: 'Work through this role’s tasks in the selected change. Check tasks only after their required verification succeeds.',
+  propose: 'Add a named spec to this requirement and role. Stops before implementation.',
+  update: 'Revise the selected spec and its tasks. Submitting authorizes the edits in your prompt. Shared planning and sibling specs stay unchanged. Stops before implementation.',
+  apply: 'Work through this role’s selected spec tasks. Check tasks only after their required verification succeeds.',
 };
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -20,10 +20,14 @@ function button(text, action) {
 
 export function mountRoleActions({ host, container, navigate, workspace, requirement, role }) {
   let disposed = false, busy = false, opened = false, connection = null, last = null;
-  const key = `openhands.apps.openspec-progress:v4:${host.backend.id}:${workspace}:${requirement.id}:${role.id}:run`;
+  const supportsSpecs = Array.isArray(requirement.specs) && Array.isArray(role.specs);
+  const specs = supportsSpecs ? requirement.specs.filter(spec => spec.role === role.id && role.specs.includes(spec.id)) : [];
+  const prefix = `${{ SA: 'SA', Frontend: 'FE', Backend: 'BE', QA: 'QA' }[role.id]}-${requirement.id}-`;
+  const key = `openhands.apps.openspec-progress:v5:${host.backend.id}:${workspace}:${requirement.id}:${role.id}:run`;
   try {
     const value = JSON.parse(localStorage.getItem(key));
     if (value && UUID.test(value.request_id) && UUID.test(value.automation_id) && SKILLS[value.stage]
+      && typeof value.spec_id === 'string' && value.spec_id.startsWith(prefix)
       && (!value.run_id || UUID.test(value.run_id))) last = value;
   } catch { /* Optional storage. */ }
   function remember(value) {
@@ -63,17 +67,24 @@ export function mountRoleActions({ host, container, navigate, workspace, require
   const skillLabel = el('label', 'osb-skill-field'); skillLabel.append(el('span', 'osb-label', 'Skill'));
   const skill = el('select'); skill.setAttribute('aria-label', `${role.id} skill`);
   for (const [value, label] of Object.entries(SKILLS)) { const option = el('option', '', label); option.value = value; skill.append(option); }
-  skill.value = last?.stage || 'apply'; skillLabel.append(skill);
-  const changeLabel = el('label', 'osb-skill-field'); changeLabel.append(el('span', 'osb-label', 'New change name'));
-  const change = el('input'); change.setAttribute('aria-label', `${role.id} new change name`);
-  change.placeholder = 'add-task-reminders'; change.maxLength = 100; changeLabel.append(change);
+  skill.value = last?.stage || (supportsSpecs && !specs.length ? 'propose' : 'apply'); skillLabel.append(skill);
+  const specLabel = el('label', 'osb-skill-field'); specLabel.append(el('span', 'osb-label', 'Spec'));
+  const spec = el('select'); spec.setAttribute('aria-label', `${role.id} spec`);
+  for (const item of specs) { const option = el('option', '', `${item.id} · ${item.title}`); option.value = item.id; spec.append(option); }
+  if (last && specs.some(item => item.id === last.spec_id)) spec.value = last.spec_id;
+  specLabel.append(spec);
+  const changeLabel = el('label', 'osb-skill-field'); changeLabel.append(el('span', 'osb-label', 'New feature name'));
+  const change = el('input'); change.setAttribute('aria-label', `${role.id} new feature name`);
+  change.placeholder = 'date-validation'; change.maxLength = 160 - prefix.length; changeLabel.append(change);
+  const specPreview = el('p', 'osb-muted'); specPreview.setAttribute('aria-live', 'polite');
+  if (last?.stage === 'propose') change.value = last.spec_id.slice(prefix.length);
   const promptLabel = el('label', 'osb-skill-field');
   const promptTitle = el('span', 'osb-label'); promptLabel.append(promptTitle);
   const prompt = el('textarea'); prompt.setAttribute('aria-label', `${role.id} prompt`);
   prompt.rows = 4; prompt.maxLength = 10000; prompt.placeholder = 'Describe the work or constraints for this role…'; promptLabel.append(prompt);
   const help = el('p', 'osb-skill-help');
   const submit = el('button', 'osb-button osb-primary'); submit.type = 'submit';
-  form.append(skillLabel, changeLabel, promptLabel, help, submit);
+  form.append(skillLabel, specLabel, changeLabel, specPreview, promptLabel, help, submit);
   const result = el('div', 'osb-run-result'); result.setAttribute('role', 'status'); result.setAttribute('aria-live', 'polite');
   body.append(connectionText, target, connectionActions, setupHelp, form, result);
   panel.append(body); container.append(panel);
@@ -81,22 +92,24 @@ export function mountRoleActions({ host, container, navigate, workspace, require
   function update() {
     const stage = skill.value;
     const matches = connection?.configuration?.spec_store === workspace;
-    submit.disabled = busy || !connection?.ready || !matches || Boolean(last);
-    skill.disabled = change.disabled = prompt.disabled = busy || Boolean(last);
+    submit.disabled = !supportsSpecs || busy || !connection?.ready || !matches || Boolean(last) || (stage !== 'propose' && !spec.value);
+    skill.disabled = spec.disabled = change.disabled = prompt.disabled = !supportsSpecs || busy || Boolean(last);
     setup.disabled = probe.disabled = busy;
     setup.hidden = Boolean(connection?.ready);
     setupHelp.hidden = Boolean(connection?.ready);
     changeLabel.hidden = stage !== 'propose'; change.required = stage === 'propose';
+    specLabel.hidden = stage === 'propose'; spec.required = stage !== 'propose';
+    specPreview.hidden = stage !== 'propose'; specPreview.textContent = `New spec: ${prefix}${change.value.trim() || '<feature>'}`;
     prompt.required = stage !== 'apply'; promptTitle.textContent = stage === 'apply' ? 'Prompt (optional)' : 'Prompt';
-    help.textContent = HELP[stage]; submit.textContent = `Run ${role.id} ${SKILLS[stage]}`;
+    help.textContent = supportsSpecs ? HELP[stage] : 'This store uses the legacy requirement format. Migrate it to role specs before running automations.'; submit.textContent = `Run ${role.id} ${SKILLS[stage]}`;
     panel.setAttribute('aria-busy', String(busy));
   }
   function renderLast(message) {
     result.replaceChildren();
     if (message) result.append(el('p', 'osb-run-error', message));
     if (!last) return;
-    result.append(el('p', '', last.run_id ? `${SKILLS[last.stage]} submitted for ${role.id}. Refresh status or open the run for its result.`
-      : 'This request may have started. Inspect automation history before starting another run.'),
+    result.append(el('p', '', last.run_id ? `${SKILLS[last.stage]} submitted for ${last.spec_id}. Refresh status or open the run for its result.`
+      : `The request for ${last.spec_id} may have started. Inspect automation history before starting another run.`),
     link(last.run_id ? 'Open automation run →' : 'Inspect automation history →', `/automations/${last.automation_id}${last.run_id ? `?run=${last.run_id}` : ''}`));
     if (last.run_id) {
       const refresh = button('Refresh run status', refreshStatus); refresh.disabled = busy;
@@ -140,22 +153,26 @@ export function mountRoleActions({ host, container, navigate, workspace, require
     }
   }
   skill.addEventListener('change', update);
+  spec.addEventListener('change', update);
+  change.addEventListener('input', update);
   panel.addEventListener('toggle', () => {
     if (!panel.open || opened || disposed) return;
     opened = true; renderLast(); connect('probe');
   });
   form.addEventListener('submit', async event => {
     event.preventDefault();
-    if (busy || last || disposed || !connection?.ready || connection.configuration.spec_store !== workspace) return;
+    if (!supportsSpecs || busy || last || disposed || !connection?.ready || connection.configuration.spec_store !== workspace) return;
     let input;
     try {
+      if (skill.value === 'propose' && specs.some(item => item.id === prefix + change.value.trim())) throw new Error('This spec already exists. Choose a new feature name.');
       input = validateRoleInput({ stage: skill.value, spec_store: workspace, requirement_id: requirement.id,
-        context_change: requirement.change, role: role.id, change: skill.value === 'propose' ? change.value.trim() : requirement.change,
+        context_change: requirement.change, role: role.id, change: requirement.change,
+        spec_id: skill.value === 'propose' ? prefix + change.value.trim() : spec.value,
         request: prompt.value });
     } catch (error) { renderLast(error.message); return; }
     const automation = connection.automations.find(item => item.stage === skill.value && item.role === role.id);
     if (!automation) { renderLast('Reconnect the role automations before running this skill.'); return; }
-    const attempt = { request_id: crypto.randomUUID(), automation_id: automation.id, stage: skill.value };
+    const attempt = { request_id: crypto.randomUUID(), automation_id: automation.id, stage: skill.value, spec_id: input.spec_id };
     remember(attempt); busy = true; update(); result.textContent = 'Submitting one automation request…';
     try {
       const response = await callRoleAutomation(host, 'dispatch', { ...input, automation_id: attempt.automation_id, request_id: attempt.request_id });
