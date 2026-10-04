@@ -31,11 +31,9 @@ export function mountWorkflowNavigation({ container, role, onSelect }) {
   const collapse = document.createElement('button'); collapse.type = 'button'; collapse.className = 'osb-button'; collapse.textContent = 'Close canvas';
   const frame = document.createElement('iframe'); frame.className = 'osb-workflow-frame';
   frame.title = `${role} interactive Archify workflow`;
-  frame.setAttribute('sandbox', 'allow-scripts allow-downloads');
+  frame.setAttribute('sandbox', 'allow-scripts');
   frame.setAttribute('referrerpolicy', 'no-referrer');
   frame.srcdoc = createWorkflowDocument(workflowHtml, config);
-  const exportHelp = document.createElement('p'); exportHelp.className = 'osb-muted osb-workflow-export-help';
-  exportHelp.textContent = 'Export downloads are available. Clipboard and share links are unavailable in this embedded canvas.';
 
   function publish() {
     if (disposed || !ready) return;
@@ -83,7 +81,7 @@ export function mountWorkflowNavigation({ container, role, onSelect }) {
   collapse.addEventListener('click', closeExpanded);
   viewer.addEventListener('cancel', event => { event.preventDefault(); closeExpanded(); });
   expandedToolbar.append(expandedTitle, collapse); viewer.append(expandedToolbar, frame);
-  toolbar.append(title, expand); panel.append(toolbar, help, current, viewer, exportHelp); container.append(panel);
+  toolbar.append(title, expand); panel.append(toolbar, help, current, viewer); container.append(panel);
   renderState();
   return {
     setState(nextStage, state = {}) {

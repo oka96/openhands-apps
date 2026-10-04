@@ -253,7 +253,6 @@
 .osb-workflow-navigation h2 { font-size:15px; }
 .osb-workflow-navigation > p { font-size:12px; line-height:1.65; margin:0 20px 16px; }
 .osb-workflow-current { color:var(--muted); }
-.osb-workflow-navigation > .osb-workflow-export-help { margin:0; padding:12px 20px; border-top:1px solid var(--border); font-size:11px; }
 .osb-workflow-viewer { position:static; width:100%; padding:0; margin:0; border:0; max-width:none; color:var(--ink); background:var(--surface); }
 .osb-workflow-viewer.is-expanded { position:fixed; inset:2vh 2vw; width:96vw; height:96vh; max-height:96vh; margin:auto; display:flex; flex-direction:column; border:1px solid var(--border); border-radius:10px; overflow:hidden; box-shadow:0 20px 80px #14213d4d; }
 .osb-workflow-viewer::backdrop { background:#14213d99; }

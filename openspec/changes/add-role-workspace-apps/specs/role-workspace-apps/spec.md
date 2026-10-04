@@ -87,7 +87,11 @@ App-owned requirement, role-spec, automation and Kanban role-filter dropdowns SH
 - **THEN** focus remains visible, the native selection and Escape behavior remain available and no automation is dispatched
 
 ### Requirement: Interactive Archify workflow workspace
-Each role app SHALL show the actual Archify Propose, Update and Apply viewer in a larger left canvas and the selected automation details, real target selection and prompt form in a smaller right column. Archify zoom, pan, reset, finder, focus, lens, radar, route, presentation, theme/style and export controls SHALL remain available where supported by the viewer. Nodes SHALL support pointer and keyboard selection, expose selection accessibly and never dispatch on selection. The selected automation marker and form stage SHALL stay synchronized independently of viewer inspection focus, preserving draft text and current source view during node changes. Narrow layouts SHALL stack the panels without horizontal page overflow or hidden controls.
+Each role app SHALL show the actual Archify Propose, Update and Apply viewer in a larger left canvas and the selected automation details, real target selection and prompt form in a smaller right column. Archify zoom, pan, reset, finder, focus, lens, radar, route, presentation, theme/style controls SHALL remain available where supported by the viewer. Nodes SHALL support pointer and keyboard selection, expose selection accessibly and never dispatch on selection. The selected automation marker and form stage SHALL stay synchronized independently of viewer inspection focus, preserving draft text and current source view during node changes. Narrow layouts SHALL stack the panels without horizontal page overflow or hidden controls.
+
+#### Scenario: Embedded export is unavailable
+- **WHEN** a user opens an inline or expanded role workflow or presses E in its canvas
+- **THEN** no Export control or export menu is available, no export help is shown, and normal node selection, search and zoom remain available; the standalone artifact is unchanged
 
 #### Scenario: Explore the interactive canvas
 - **WHEN** the user zooms, pans, resets the view, searches or inspects a route

@@ -78,7 +78,7 @@ does not edit documents, check tasks, or start automations. If formatting fails,
 
 Open its dedicated role app. The larger left canvas contains the actual Archify
 viewer: zoom, pan, reset, node search, focus, route inspection, theme/style,
-presentation and export controls. Select **Propose**, **Update** or **Apply**
+presentation controls. Export is hidden in the embedded workflow. Select **Propose**, **Update** or **Apply**
 directly by click, Enter or Space; the narrower right panel shows its form and
 native automation history. Exploring the diagram does not change the automation.
 The embedded viewer hides Archify's node-details popup so it does not cover the
@@ -231,7 +231,7 @@ Build once, then add each package in **Customize → Apps → Add app**:
 
 Leave Ref and Repository path blank for these local directories. Each manifest
 and self-contained `extension.js` is at its package root. Install and enable all
-five packages at the same release version, currently 0.10.2.
+five packages at the same release version, currently 0.10.3.
 
 Installation leaves the app disabled. Review the source, then choose
 **Enable trusted app**. The app runs inside Canvas and uses its authenticated

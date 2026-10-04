@@ -2,7 +2,7 @@
   "schema_version": 1,
   "name": "openspec-fe",
   "display_name": "FE Workflow",
-  "version": "0.10.2",
+  "version": "0.10.3",
   "entrypoint": "extension.js",
   "contributes": {
     "pages": [

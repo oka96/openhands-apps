@@ -54,3 +54,8 @@
 
 - [x] 10.1 Refine native app dropdown fields and supported picker menus while preserving keyboard, target and filter behavior; exclude Archify, build and validate release 0.10.2.
 - [x] 10.2 Update the installed apps and visually verify role selectors and the Kanban filter, keyboard selection/dismissal and narrow-screen containment; save evidence without running automations.
+
+## 11. Remove embedded export
+
+- [x] 11.1 Remove embedded export controls, shortcut and help; preserve standalone artifacts, build and validate release 0.10.3.
+- [x] 11.2 Update installed apps and verify inline/expanded export removal with working selection and zoom, without dispatching automations.

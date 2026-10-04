@@ -87,3 +87,9 @@
 - Reinstalled and enabled Kanban, SA, FE, BE and QA at 0.10.2. In the live QA workspace, Down then Enter selected `QA-REQ-003-keyboard` and updated its source artifact target. Moving within the Requirement picker then pressing Escape dismissed it while preserving REQ-003. The Kanban QA filter displayed five of six requirements and omitted completed REQ-006; restoring All roles displayed six of six.
 - Reviewed desktop picker alignment and selected styling. At 390×844, the long role-spec value wrapped within a 320px field and both menu options stayed inside the viewport; document width was 390px. The in-app browser also rendered the styled picker correctly at its actual 595px width with no document overflow. Reset the temporary viewport override. Screenshots: `artifacts/dropdown-desktop.png` and `artifacts/dropdown-narrow.png` (ignored).
 - No automation Run button was pressed and no automation or store files were edited for this refinement. The OpenSpec change remains active.
+
+## Embedded export removal (0.10.3)
+
+- Hidden the embedded Export button/menu and removed its guide shortcut hint and host help text. Capture-phase handling suppresses E outside editable fields while leaving other keys intact. Removed the iframe download permission; standalone Archify HTML and delivery receipts remain unchanged.
+- `npm run check` passed: 230 JavaScript tests, 30 Python tests, five-package builds and seven strict OpenSpec validations. Final CSS cleanup was rebuilt; all five distribution packages passed the official Canvas validator. Log: `artifacts/no-export-check.log`.
+- Updated and enabled all five installed apps at 0.10.3. In SA, FE, BE and QA, Update selection worked and E left both export controls hidden. In expanded SA, Enter selected Apply and zoom reached 125%; reset and Close remained available. No automation was dispatched. Screenshot: `artifacts/workflow-no-export.png` (ignored).

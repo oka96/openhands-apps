@@ -38,7 +38,7 @@ function parentFixture(t) {
 
 test('isolated viewer retains native runtime, its controls and canonical standalone input', t => {
   const { frame } = parentFixture(t);
-  assert.equal(frame.getAttribute('sandbox'), 'allow-scripts allow-downloads');
+  assert.equal(frame.getAttribute('sandbox'), 'allow-scripts');
   assert.equal(frame.getAttribute('referrerpolicy'), 'no-referrer');
   assert.match(frame.srcdoc, /<head><meta http-equiv="Content-Security-Policy"/);
   assert.match(frame.srcdoc, /default-src 'none'.*connect-src 'none'/);

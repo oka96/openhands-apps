@@ -254,7 +254,6 @@ var styles_default = `.osb-root {
 .osb-workflow-navigation h2 { font-size:15px; }
 .osb-workflow-navigation > p { font-size:12px; line-height:1.65; margin:0 20px 16px; }
 .osb-workflow-current { color:var(--muted); }
-.osb-workflow-navigation > .osb-workflow-export-help { margin:0; padding:12px 20px; border-top:1px solid var(--border); font-size:11px; }
 .osb-workflow-viewer { position:static; width:100%; padding:0; margin:0; border:0; max-width:none; color:var(--ink); background:var(--surface); }
 .osb-workflow-viewer.is-expanded { position:fixed; inset:2vh 2vw; width:96vw; height:96vh; max-height:96vh; margin:auto; display:flex; flex-direction:column; border:1px solid var(--border); border-radius:10px; overflow:hidden; box-shadow:0 20px 80px #14213d4d; }
 .osb-workflow-viewer::backdrop { background:#14213d99; }
@@ -963,6 +962,14 @@ function installWorkflowBridge() {
   svg.addEventListener("click", select);
   svg.addEventListener("keydown", select);
   document.addEventListener("keydown", (event) => {
+    if (!["e", "E"].includes(event.key) || event.metaKey || event.ctrlKey || event.altKey || event.target?.closest?.('input, textarea, [contenteditable]:not([contenteditable="false"])')) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }, true);
+  document.querySelectorAll(".diagram-guide-shortcuts > span").forEach((hint) => {
+    if (hint.querySelector("kbd")?.textContent.trim() === "E") hint.remove();
+  });
+  document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && !event.defaultPrevented) send("collapse");
   });
   window.addEventListener("message", (event) => {
@@ -987,6 +994,7 @@ function createWorkflowDocument(html, config) {
     ${selectionSelectors} { stroke-width: 3; }
     /* Role automation details already live in the adjacent form. */
     html body #focus-chip { display: none !important; }
+    html body #btn-export, html body #export-menu { display: none !important; }
     html body .openspec-workflow-sr { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   </style>`;
   return html.replace("<head>", `<head>${csp}`).replace("<html ", '<html data-present="true" ').replace("</head>", `${styles}</head>`).replace("</body>", `${bridge}</body>`);
@@ -1039,12 +1047,9 @@ function mountWorkflowNavigation({ container, role, onSelect }) {
   const frame = document2.createElement("iframe");
   frame.className = "osb-workflow-frame";
   frame.title = `${role} interactive Archify workflow`;
-  frame.setAttribute("sandbox", "allow-scripts allow-downloads");
+  frame.setAttribute("sandbox", "allow-scripts");
   frame.setAttribute("referrerpolicy", "no-referrer");
   frame.srcdoc = createWorkflowDocument(role_workflow_default, config);
-  const exportHelp = document2.createElement("p");
-  exportHelp.className = "osb-muted osb-workflow-export-help";
-  exportHelp.textContent = "Export downloads are available. Clipboard and share links are unavailable in this embedded canvas.";
   function publish() {
     if (disposed || !ready) return;
     frame.contentWindow?.postMessage({
@@ -1109,7 +1114,7 @@ function mountWorkflowNavigation({ container, role, onSelect }) {
   expandedToolbar.append(expandedTitle, collapse);
   viewer.append(expandedToolbar, frame);
   toolbar.append(title, expand);
-  panel.append(toolbar, help, current, viewer, exportHelp);
+  panel.append(toolbar, help, current, viewer);
   container.append(panel);
   renderState();
   return {

@@ -53,6 +53,15 @@ export function installWorkflowBridge() {
   }
   svg.addEventListener('click', select);
   svg.addEventListener('keydown', select);
+  // Export is not part of the embedded workflow, including the guide shortcut.
+  document.addEventListener('keydown', event => {
+    if (!['e', 'E'].includes(event.key) || event.metaKey || event.ctrlKey || event.altKey ||
+        event.target?.closest?.('input, textarea, [contenteditable]:not([contenteditable="false"])')) return;
+    event.preventDefault(); event.stopImmediatePropagation();
+  }, true);
+  document.querySelectorAll('.diagram-guide-shortcuts > span').forEach(hint => {
+    if (hint.querySelector('kbd')?.textContent.trim() === 'E') hint.remove();
+  });
   document.addEventListener('keydown', event => {
     if (event.key === 'Escape' && !event.defaultPrevented) send('collapse');
   });
@@ -70,7 +79,7 @@ export function installWorkflowBridge() {
     current.textContent = `Current automation: ${data.stage}. ${disabled ? 'Automation selection is locked while submitting. Diagram inspection remains available.' : 'Activate a node to select its automation; use Run in the form to start work.'}`;
   });
   // These native actions produce about:srcdoc links or require clipboard access.
-  // Keep native file exports available, while making this embedding limit clear.
+  // These actions remain unavailable in the embedded workflow.
   document.querySelectorAll('#btn-focus-copy, #route-probe-copy, #semantic-lens-copy, button[data-action="copy"]').forEach(button => {
     button.disabled = true;
     button.title = 'Clipboard and share links are unavailable in this embedded canvas.';
@@ -90,6 +99,7 @@ export function createWorkflowDocument(html, config) {
     ${selectionSelectors} { stroke-width: 3; }
     /* Role automation details already live in the adjacent form. */
     html body #focus-chip { display: none !important; }
+    html body #btn-export, html body #export-menu { display: none !important; }
     html body .openspec-workflow-sr { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   </style>`;
   return html.replace('<head>', `<head>${csp}`)
