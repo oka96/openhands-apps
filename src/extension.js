@@ -1,6 +1,7 @@
 import styles from './styles.css';
 import { loadBoard, validateWorkspace } from './client.js';
-import { mountRoleActions, mountRoleAutomationCatalog } from './role-actions.js';
+import { mountRoleActions } from './role-actions.js';
+import { mountWorkflowNavigation } from './workflow-navigation.js';
 import { renderMarkdown } from './markdown.js';
 
 import { DEFAULT_STORE, KANBAN_APP, ROLE_APPS, roleApp, storeKey } from './app-config.js';
@@ -48,15 +49,20 @@ function activateApp(host, app) {
   const key = storeKey(host.backend.id);
   const filters = { query: '', role: '', view: 'board' };
   const mounts = new Set();
+  // A home draft crosses one intentional navigation only, within this app instance.
+  let homeDraftHandoff = null;
   const unregister = host.registerPage(app.pageId, ({ container, path, navigate }) => {
     let workspace = DEFAULT_STORE;
     try { workspace = validateWorkspace(localStorage.getItem(key) || DEFAULT_STORE); } catch { /* Optional storage. */ }
     let route, routeError;
     try { route = parseAppPath(path || '', { allowLegacyChange: !fixedRole }); if (route.workspace) workspace = route.workspace; } catch (error) { routeError = error; }
+    const pendingHandoff = homeDraftHandoff;
+    homeDraftHandoff = null;
+    let initialDraft = !routeError && pendingHandoff?.workspace === workspace && pendingHandoff.requirementId === route.requirementId && !route.change ? pendingHandoff.draft : null;
     const homeHref = () => appHref(app, workspace);
     const requirementHref = id => appHref(app, workspace, id);
     let inventory = null, inventoryError = false;
-    let disposed = false, busy = false, generation = 0, snapshot = null;
+    let disposed = false, busy = false, generation = 0, contentGeneration = 0, snapshot = null;
     let selectedArtifact = 'proposal', artifactMode = 'preview', selectedSpec = '';
     const actionDisposers = new Set();
     function clearActions() { for (const cleanup of actionDisposers) cleanup(); actionDisposers.clear(); }
@@ -69,6 +75,7 @@ function activateApp(host, app) {
     function link(text, href, className) {
       const node = el('a', className, text); node.href = href;
       node.addEventListener('click', event => {
+        if (disposed) { event.preventDefault(); return; }
         if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
         event.preventDefault(); navigate(href);
       });
@@ -101,29 +108,55 @@ function activateApp(host, app) {
     const load = el('button', 'osb-button', 'Load store'); load.type = 'submit';
     storeForm.append(storeLabel, load);
     storeForm.addEventListener('submit', event => {
-      event.preventDefault(); if (busy) return;
+      event.preventDefault(); if (disposed || busy) return;
       try {
         const nextWorkspace = validateWorkspace(storeInput.value.trim());
+        homeDraftHandoff = null; initialDraft = null;
         workspace = nextWorkspace;
         try { localStorage.setItem(key, workspace); } catch { /* Optional storage. */ }
         if (route?.workspace || route?.requirementId || route?.change) { navigate(homeHref()); return; }
-        snapshot = null; clearActions(); content.replaceChildren(); metrics.replaceChildren(); refreshData();
+        snapshot = null; contentGeneration++; clearActions(); content.replaceChildren(); metrics.replaceChildren(); refreshData();
       } catch (error) { showError(error.message); }
     });
     const notice = el('div', 'osb-notice'); notice.setAttribute('role', 'status'); notice.setAttribute('aria-live', 'polite');
     const metrics = el('div', 'osb-metrics');
     const content = el('div', 'osb-content');
     const footer = el('footer', 'osb-footer');
-    footer.append(el('span', '', 'Completion follows task checkboxes. All four roles must finish.'), el('span', '', fixedRole ? 'Read-only artifacts · Skills run only on explicit submit' : 'Read-only progress · Open a role workspace to inspect sources and run skills'));
+    footer.append(el('span', '', 'Completion follows task checkboxes. All four roles must finish.'), el('span', '', fixedRole ? 'Read-only artifacts · Automations run only on explicit submit' : 'Read-only progress · Open a role workspace to inspect sources and run automations'));
     root.append(header, subtitle, storeForm, notice, metrics, content, footer);
 
     function showError(message) {
       notice.className = 'osb-notice osb-alert'; notice.setAttribute('role', 'alert');
       notice.textContent = `${snapshot ? 'Stale snapshot — ' : ''}${message}`;
     }
-    function mountCatalog(container, showConnection = true) {
-      const cleanup = mountRoleAutomationCatalog({ host, container, navigate, role: fixedRole, showConnection });
-      actionDisposers.add(cleanup); return cleanup;
+    function workflowWorkspace() {
+      const layout = el('div', 'osb-workflow-layout');
+      const rail = el('aside', 'osb-workflow-rail');
+      const right = el('section', 'osb-workflow-workspace');
+      right.setAttribute('aria-label', `${app.short} automation workspace`);
+      const artifacts = el('section', 'osb-artifacts osb-workflow-artifacts');
+      artifacts.setAttribute('aria-label', `${app.short} source artifacts`);
+      let actions = null;
+      const navigation = mountWorkflowNavigation({ container: rail, role: app.short, onSelect: stage => actions?.selectStage(stage) || false });
+      actionDisposers.add(navigation.dispose);
+      layout.append(rail, right);
+      return { layout, right, artifacts, navigation, setActions(value) { actions = value; } };
+    }
+    function requirementPicker(requirement = null, beforeNavigate) {
+      const pickerGeneration = contentGeneration;
+      const label = el('label', 'osb-artifact-spec');
+      label.append(el('span', 'osb-label', 'Requirement'));
+      const select = el('select', 'osb-spec-select'); select.setAttribute('aria-label', 'Requirement');
+      if (!requirement) { const placeholder = el('option', '', 'Choose a requirement…'); placeholder.value = ''; select.append(placeholder); }
+      for (const item of snapshot.requirements) { const option = el('option', '', `${item.id} · ${item.title}`); option.value = item.id; select.append(option); }
+      select.value = requirement?.id || '';
+      select.addEventListener('change', () => {
+        if (disposed || pickerGeneration !== contentGeneration || select.value === requirement?.id || !snapshot.requirements.some(item => item.id === select.value)) return;
+        homeDraftHandoff = null;
+        beforeNavigate?.(select.value);
+        navigate(requirementHref(select.value));
+      });
+      label.append(select); return label;
     }
     function roleDestination(roleId, requirementId = '', change = '', label) {
       const descriptor = roleApp(roleId);
@@ -253,10 +286,27 @@ function activateApp(host, app) {
     function drawRoleHome() {
       clearActions(); content.replaceChildren();
       const heading = el('div', 'osb-role-home-heading');
-      heading.append(el('h2', '', `${app.short} work`), link('Open shared Kanban', appHref(KANBAN_APP, workspace), 'osb-button'));
-      const catalog = el('div'); content.append(heading, catalog); mountCatalog(catalog);
+      heading.append(el('h2', '', 'Choose an automation'), link('Open shared Kanban', appHref(KANBAN_APP, workspace), 'osb-button'));
+      const flow = workflowWorkspace();
+      const targets = el('div', 'osb-workflow-targets');
+      let disposeAction;
+      targets.append(requirementPicker(null, requirementId => {
+        homeDraftHandoff = { workspace, requirementId, draft: disposeAction.getDraft() };
+      }));
+      const emptySpec = el('p', 'osb-muted', 'Role spec becomes available after choosing a requirement.');
+      targets.append(emptySpec);
+      const actions = el('div', 'osb-artifact-actions');
+      actions.setAttribute('role', 'group'); actions.setAttribute('aria-label', 'Selected spec automation');
+      const source = el('div', 'osb-artifact-heading'); source.append(el('h3', '', 'Source artifacts'));
+      flow.right.append(targets, actions);
+      flow.artifacts.append(source, el('p', 'osb-artifact-message', 'Choose a requirement and role spec to view its artifacts.'));
+      content.append(heading, flow.layout, flow.artifacts);
+      disposeAction = mountRoleActions({ host, container: actions, navigate, workspace, requirement: null, role: { id: fixedRole }, specId: null,
+        externalSelection: true, onStageChange: (stage, state) => flow.navigation.setState(stage, state) });
+      flow.setActions(disposeAction); actionDisposers.add(disposeAction);
+      const work = el('details', 'osb-supporting-work'); work.append(el('summary', '', `${app.short} work · ${snapshot.requirements.length} requirements`));
       const search = el('input', 'osb-search'); search.type = 'search'; search.placeholder = 'Search requirements…'; search.value = filters.query; search.setAttribute('aria-label', 'Search requirements');
-      const results = el('div', 'osb-role-work-list'); content.append(search, results);
+      const results = el('div', 'osb-role-work-list'); work.append(search, results); content.append(work);
       function render() {
         filters.query = search.value; const query = filters.query.trim().toLowerCase(); results.replaceChildren();
         const reqs = snapshot.requirements.filter(req => `${req.id} ${req.title} ${req.specs.filter(spec => spec.role === fixedRole).map(spec => `${spec.id} ${spec.title}`).join(' ')}`.toLowerCase().includes(query));
@@ -273,9 +323,12 @@ function activateApp(host, app) {
       search.addEventListener('input', render); render();
     }
     function targetError(message) {
+      initialDraft = null;
       clearActions(); content.replaceChildren(el('h2', '', 'Change unavailable'), el('p', 'osb-alert', message), link('← Back to work list', homeHref(), 'osb-button'));
     }
     function drawDetail(requirement) {
+      const detailGeneration = contentGeneration;
+      const currentDetail = () => !disposed && contentGeneration === detailGeneration;
       clearActions();
       content.replaceChildren();
       const crumb = el('div', 'osb-breadcrumb'); crumb.append(link('← All requirements', homeHref(), ''), el('span', '', '/'), el('span', 'osb-id', requirement.id));
@@ -286,7 +339,9 @@ function activateApp(host, app) {
       heading.append(title, badges); content.append(crumb, heading);
       const summary = el('div', 'osb-completion');
       summary.append(el('strong', '', `${requirement.rolesComplete} of 4 roles complete`), meter(requirement.complete, requirement.total, 'Requirement task progress'), el('span', 'osb-muted', `${requirement.complete} of ${requirement.total} tasks checked`));
-      content.append(summary);
+      const supportingWork = fixedRole ? el('details', 'osb-supporting-work') : content;
+      if (fixedRole) supportingWork.append(el('summary', '', `${app.short} progress and tasks`));
+      supportingWork.append(summary);
       if (requirement.warnings.length) { const warnings = el('div', 'osb-alert'); for (const warning of requirement.warnings) warnings.append(el('p', '', warning)); content.append(warnings); }
       const specs = requirement.specs.filter(spec => !fixedRole || spec.role === fixedRole);
       if (fixedRole && route.change && !selectedSpec) selectedSpec = route.change;
@@ -309,23 +364,24 @@ function activateApp(host, app) {
         return list;
       }
       const pipeline = el('div', 'osb-pipeline');
+      const flow = fixedRole ? workflowWorkspace() : null;
       const artifactActions = el('div', 'osb-artifact-actions');
-      artifactActions.setAttribute('role', 'group'); artifactActions.setAttribute('aria-label', 'Selected spec skill');
+      artifactActions.setAttribute('role', 'group'); artifactActions.setAttribute('aria-label', 'Selected spec automation');
       let actionTarget = null, disposeAction = null;
       function drawActions() {
+        if (!currentDetail()) return;
         if (actionTarget === selectedSpec) return;
         if (disposeAction) { disposeAction(); actionDisposers.delete(disposeAction); disposeAction = null; }
         artifactActions.replaceChildren(); actionTarget = selectedSpec;
         const target = targets.find(item => item.value === selectedSpec);
-        if (!target) { artifactActions.append(el('p', 'osb-muted', 'Migrate this store to role specs to run a skill.')); return; }
+        if (!target) { initialDraft = null; artifactActions.append(el('p', 'osb-muted', 'Migrate this store to role specs to run an automation.')); return; }
         const role = requirement.roles.find(item => item.id === target.role);
+        const draft = initialDraft; initialDraft = null;
         disposeAction = mountRoleActions({ host, container: artifactActions, navigate, workspace, requirement, role, specId: target.specId,
-          onSetupComplete: () => {
-            disposeCatalog(); actionDisposers.delete(disposeCatalog);
-            disposeCatalog = mountCatalog(catalog, false);
-          },
+          initialStage: draft?.stage, initialDraft: draft, externalSelection: true,
+          onStageChange: (stage, state) => flow.navigation.setState(stage, state),
         });
-        actionDisposers.add(disposeAction);
+        flow.setActions(disposeAction); actionDisposers.add(disposeAction);
       }
       for (const role of requirement.roles.filter(role => !fixedRole || role.id === fixedRole)) {
         const panel = el('section', `osb-role-panel osb-${role.state}`);
@@ -338,6 +394,7 @@ function activateApp(host, app) {
           for (const spec of ownSpecs) {
             const group = el('section', 'osb-role-spec'); group.setAttribute('aria-label', spec.id);
             const open = !fixedRole ? roleDestination(role.id, requirement.id, spec.id, spec.id) : button(spec.id, 'osb-spec-link', () => {
+              if (!currentDetail()) return;
               selectedSpec = spec.id; specSelect.value = selectedSpec; selectedArtifact = 'specs'; drawArtifact(); drawActions();
               artifactSection.scrollIntoView?.({ behavior: 'smooth', block: 'start' }); specSelect.focus({ preventScroll: true });
             });
@@ -351,21 +408,22 @@ function activateApp(host, app) {
         if (!fixedRole) panel.append(roleDestination(role.id, requirement.id));
         pipeline.append(panel);
       }
-      content.append(pipeline);
+      supportingWork.append(pipeline);
       if (!fixedRole) { content.append(availabilityNotice()); return; }
-      const catalog = el('div'); content.append(catalog); let disposeCatalog = mountCatalog(catalog, false);
-      const artifactSection = el('section', 'osb-artifacts');
+      const artifactSection = flow.artifacts;
       const artifactHeader = el('div', 'osb-artifact-heading'); const changePath = el('code'); artifactHeader.append(el('h3', '', 'Source artifacts'), changePath);
+      const targetSelectors = el('div', 'osb-workflow-targets'); targetSelectors.append(requirementPicker(requirement));
       const specSelect = el('select', 'osb-spec-select'); specSelect.setAttribute('aria-label', 'Artifact spec');
       for (const target of targets) { const option = el('option', '', target.label); option.value = target.value; specSelect.append(option); }
       specSelect.value = selectedSpec;
       specSelect.addEventListener('change', () => {
+        if (!currentDetail()) return;
         selectedSpec = specSelect.value;
         if (!['specs', 'tasks'].includes(selectedArtifact)) selectedArtifact = 'specs';
         drawArtifact(); drawActions();
       });
       if (targets.length) {
-        const specLabel = el('label', 'osb-artifact-spec'); specLabel.append(el('span', 'osb-label', 'Role spec'), specSelect); artifactHeader.append(specLabel);
+        const specLabel = el('label', 'osb-artifact-spec'); specLabel.append(el('span', 'osb-label', 'Role spec'), specSelect); targetSelectors.append(specLabel);
       }
       const tabs = el('div', 'osb-artifact-tabs'); tabs.setAttribute('role', 'group'); tabs.setAttribute('aria-label', 'Source artifact');
       const toolbar = el('div', 'osb-artifact-toolbar');
@@ -373,17 +431,18 @@ function activateApp(host, app) {
       const body = el('div', 'osb-artifact-body');
       const modeButtons = new Map();
       for (const [mode, label] of [['preview', 'Preview'], ['source', 'Source']]) {
-        const control = button(label, 'osb-view', () => { artifactMode = mode; drawArtifact(); });
+        const control = button(label, 'osb-view', () => { if (!currentDetail()) return; artifactMode = mode; drawArtifact(); });
         modeButtons.set(mode, control); modes.append(control);
       }
       const artifactButtons = new Map();
       const artifacts = () => specs.find(spec => spec.id === selectedSpec)?.artifacts || [];
       const artifactIds = new Set(specs.flatMap(spec => spec.artifacts).map(artifact => artifact.id));
       for (const id of artifactIds) {
-        const control = button(ARTIFACTS[id], '', () => { selectedArtifact = id; drawArtifact(); });
+        const control = button(ARTIFACTS[id], '', () => { if (!currentDetail()) return; selectedArtifact = id; drawArtifact(); });
         artifactButtons.set(id, control); tabs.append(control);
       }
       function drawArtifact() {
+        if (!currentDetail()) return;
         changePath.textContent = specs.find(spec => spec.id === selectedSpec)?.change ? `openspec/changes/${selectedSpec}` : 'Choose an existing role change to preview artifacts';
         const available = artifacts();
         const artifact = available.find(a => a.id === selectedArtifact) || available[0];
@@ -412,21 +471,24 @@ function activateApp(host, app) {
         } catch {
           const fallback = el('div', 'osb-artifact-message');
           const message = el('p', '', 'This Markdown could not be previewed. You can still read its source.'); message.setAttribute('role', 'alert');
-          fallback.append(message, button('View source', 'osb-button', () => { artifactMode = 'source'; drawArtifact(); modeButtons.get('source').focus(); }));
+          fallback.append(message, button('View source', 'osb-button', () => { if (!currentDetail()) return; artifactMode = 'source'; drawArtifact(); modeButtons.get('source').focus(); }));
           body.append(fallback);
         }
       }
       toolbar.append(tabs, modes);
-      artifactSection.append(artifactHeader, artifactActions, toolbar, body); content.append(artifactSection); drawArtifact(); drawActions();
+      flow.right.append(targetSelectors, artifactActions);
+      artifactSection.append(artifactHeader, toolbar, body);
+      content.append(flow.layout, artifactSection, supportingWork); drawArtifact(); drawActions();
     }
     function drawSnapshot() {
+      contentGeneration++;
       if (route.requirementId || route.change) {
         const requirement = snapshot.requirements.find(r => route.requirementId ? r.id === route.requirementId : r.specs.some(spec => spec.change === route.change));
         if (requirement) {
           if (route.change && !selectedSpec && !requirement.specs.some(spec => spec.id === route.change && (!fixedRole || spec.role === fixedRole))) { targetError('The linked change is missing or belongs to another requirement or role.'); return; }
           if (route.change && !selectedSpec) selectedSpec = route.change;
           drawDetail(requirement);
-        } else { clearActions(); content.replaceChildren(el('h2', '', 'Requirement not found'), el('p', 'osb-muted', 'This requirement is not in the selected store.'), link('← Back to work list', homeHref(), 'osb-button')); }
+        } else { initialDraft = null; clearActions(); content.replaceChildren(el('h2', '', 'Requirement not found'), el('p', 'osb-muted', 'This requirement is not in the selected store.'), link('← Back to work list', homeHref(), 'osb-button')); }
       } else drawBoard();
     }
     async function refreshData() {

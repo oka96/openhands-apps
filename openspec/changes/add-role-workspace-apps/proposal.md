@@ -6,12 +6,14 @@ The user wants separate OpenHands apps for SA, FE, BE and QA. Kanban currently c
 
 ## What Changes
 
-- Add four independently installable Canvas app packages: OpenSpec SA, OpenSpec FE, OpenSpec BE and OpenSpec QA. Each has a fixed role, a role work list, its related Propose/Update/Apply automations and a source-artifact workspace.
+- Add four independently installable Canvas app packages: SA Workflow, FE Workflow, BE Workflow and QA Workflow. Each has a fixed role, a role work list, its related Propose/Update/Apply automations and a source-artifact workspace.
 - Move artifact previews and execution from Kanban requirement details into the role apps. Kanban keeps requirement progress and role summaries, with links to the appropriate app and selected change.
 - Preserve the selected store, requirement and change across links and return navigation. Direct links, missing roles, stale changes and unavailable apps have explicit states.
 - Reuse the existing twelve native definitions, signed event contract, shared connection and run references. Navigation, discovery and refresh never dispatch work; execution remains an explicit submit action.
 - Build all five packages from shared source, validate them, install them locally and verify the actual links, related automation inventories and artifacts.
 - Give the five apps distinct sidebar icons and a stable Kanban, SA, FE, BE, QA order. The installed Canvas 1.24.0 host lacks manifest support for this, so provide a guarded, repeatable local sidebar customization.
+- Present execution as Automation throughout the app controls, accessible labels and help. Preserve the existing OpenSpec Propose, Update and Apply implementation and all saved app/run identities; source artifact content remains literal.
+- Give every role app a two-column workflow workspace: a large interactive Archify Propose/Update/Apply canvas on the left and a narrower selected automation, target and prompt form on the right. Preserve Archify viewer controls including zoom, pan, reset, search, focus, presentation and export. Keep artifact Preview and Source in a full-width section below both columns. Selecting a node never starts work.
 
 ## Capabilities
 

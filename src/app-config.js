@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.8.0';
+export const APP_VERSION = '0.10.0';
 export const DEFAULT_STORE = '/Users/oka/Desktop/openspec-store';
 export const KANBAN_APP = Object.freeze({
   name: 'openspec-progress', role: null, short: 'OS', displayName: 'OpenSpec Kanban',
@@ -7,7 +7,7 @@ export const KANBAN_APP = Object.freeze({
 export const ROLE_APPS = Object.freeze([
   ['sa', 'SA', 'SA'], ['fe', 'Frontend', 'FE'], ['be', 'Backend', 'BE'], ['qa', 'QA', 'QA'],
 ].map(([slug, role, short]) => Object.freeze({
-  name: `openspec-${slug}`, role, short, displayName: `OpenSpec ${short}`,
+  name: `openspec-${slug}`, role, short, displayName: `${short} Workflow`,
   pageId: 'role', path: '/role', packageDirectory: `apps/openspec-${slug}`,
 })));
 

@@ -1,14 +1,15 @@
 # OpenSpec apps for OpenHands
 
 Five native Canvas apps share one OpenSpec store and the existing twelve role
-automations. **OpenSpec Kanban** shows requirement progress. **OpenSpec SA**,
-**OpenSpec FE**, **OpenSpec BE** and **OpenSpec QA** each provide a fixed-role work
-list, source-artifact workspace and the role's three related automations.
+automations. **OpenSpec Kanban** shows requirement progress. **SA Workflow**,
+**FE Workflow**, **BE Workflow** and **QA Workflow** each provide a fixed-role work
+list, interactive workflow and source-artifact workspace for the role's three
+related automations.
 The app boundary organizes navigation; it does not isolate permissions or data.
 
-Role skill controls show the actual profile, mapped OpenSpec skill, project,
+Role automation controls show the actual profile, selected automation, project,
 store and timeout from `role-workflow.json`. Uninstalled changes are marked as
-requiring reconnect. Submit from a role workspace's Role spec/Skill controls;
+requiring reconnect. Select an action in the workflow, then submit its form;
 native Automation **Run now** lacks the required request context, and its profile
 selector does not override this workflow's configured profile.
 
@@ -43,9 +44,10 @@ the connected Agent Server.
   inspect the exact text. Your choice stays selected when switching documents
   or refreshing the requirement.
 - Edit files in the store, then select **Refresh**. Progress and checklists are read-only in the board.
-- In the role workspace's **Source artifacts**, choose **Role spec** and then
-  **Skill** to start work through native OpenHands automations. The role stays
-  fixed to that app, and the selected change determines the target.
+- In the role workspace, choose a requirement and **Role spec**, then select
+  **Propose**, **Update** or **Apply** in the left workflow. The right panel shows
+  the selected automation and prompt. The role stays fixed to that app, and only
+  pressing **Run** starts work.
 
 Kanban links preserve the exact store, requirement and selected change. **Back
 to Kanban** returns to the same requirement and store. New pages read the latest
@@ -72,38 +74,52 @@ other URL schemes remain text. Diagrams and code stay in code blocks. Preview
 does not edit documents, check tasks, or start automations. If formatting fails,
 **View source** keeps the document available.
 
-## Run a role skill
+## Run a role automation
 
-Open its dedicated role app, then choose a requirement from that role's work list.
-Each role app lists its three related native Propose, Update and Apply automations
-with history links. Within a requirement, choose **Role spec** under **Source
-artifacts** to select both the source document and automation target.
-One inline **Skill** form appears immediately below it. For a role with no specs,
-choose its **New spec** entry to propose the first feature. Switching documents or
-Preview/Source preserves your draft; choosing a different Role spec opens that
-target's form.
+Open its dedicated role app. The larger left canvas contains the actual Archify
+viewer: zoom, pan, reset, node search, focus, route inspection, theme/style,
+presentation and export controls. Select **Propose**, **Update** or **Apply**
+directly by click, Enter or Space; the narrower right panel shows its form and
+native automation history. Exploring the diagram does not change the automation.
+The arrows illustrate a typical workflow: actions are independent and run only
+when you explicitly submit.
+
+Choose a requirement and **Role spec** to bind the source documents and execution
+target. You can draft a prompt on the role home before choosing a requirement;
+Run stays disabled until a real target is selected. That first requirement choice
+carries the draft once within the same store. Changing an existing requirement or
+spec starts a fresh draft. Prompts are never saved persistently.
+
+For a role with no specs, choose its **New spec** entry to propose the first feature.
+Switching workflow actions, documents or Preview/Source preserves your current
+draft. Source artifacts span the full width below both the canvas and form, and
+expand to their full height.
+Supporting work lists and progress are available in disclosures. On narrow
+screens the workflow stacks above the form.
 Use the shared automation connection setup once to install or reconnect the
-twelve role-and-skill definitions from `/Users/oka/Desktop/openhands-automation`
+twelve role automation definitions from `/Users/oka/Desktop/openhands-automation`
 and enable signed local requests. This starts no agent. Every role app uses that
 same connection and filters its catalog to the three automations for its role.
+The underlying actions remain `openspec-propose`, `openspec-update-change` and
+`openspec-apply-change`; Automation is the user-facing name for triggering them.
 Connect also retires the seven legacy stage and three generic role definitions
 after verifying they have no active runs; existing conversations remain available.
 The panel shows the configured code project and spec store.
-Connection checks are read-only, and Skill remains editable while they run.
-Previous run links remain visible without locking Skill. After a submission,
-use **Start another run** to enable another explicit submission; changing Skill
+Connection checks are read-only, and Automation remains editable while they run.
+Previous run links remain visible without locking Automation. After a submission,
+use **Start another run** to enable another explicit submission; changing Automation
 alone does not start a run or discard its history.
 
-Choose a skill and supply one prompt:
+Choose an automation and supply one prompt:
 
 - **Propose** requires a new feature slug and prompt. It derives the role change ID and plans the new folder under the selected requirement; no registration file is needed.
 - **Update** requires a selected spec and revision prompt. Submitting authorizes the stated edits to that spec and its tasks. It stops before implementation.
 - **Apply** works through the selected spec's pending tasks. Its prompt is optional and can narrow the work or add constraints; required verification still applies.
 
-Press **Run <role> <skill>** to create one native automation run. Open its run or
+Press **Run <role> <automation>** to create one native automation run. Open its run or
 conversation to inspect results, or use **Refresh run status**. Refresh the
 requirement afterward to read any source changes. A successful dispatch is not
-task completion. Runs stop at their selected skill; they never advance another
+task completion. Runs stop at their selected automation; they never advance another
 stage, commit, push, archive, or deploy. Missing decisions or tool approvals appear
 as blocked results for the user to resolve.
 
@@ -204,20 +220,20 @@ Build once, then add each package in **Customize → Apps → Add app**:
 | App | App source |
 | --- | --- |
 | OpenSpec Kanban | `/Users/oka/Desktop/openhands-apps` |
-| OpenSpec SA | `/Users/oka/Desktop/openhands-apps/apps/openspec-sa` |
-| OpenSpec FE | `/Users/oka/Desktop/openhands-apps/apps/openspec-fe` |
-| OpenSpec BE | `/Users/oka/Desktop/openhands-apps/apps/openspec-be` |
-| OpenSpec QA | `/Users/oka/Desktop/openhands-apps/apps/openspec-qa` |
+| SA Workflow | `/Users/oka/Desktop/openhands-apps/apps/openspec-sa` |
+| FE Workflow | `/Users/oka/Desktop/openhands-apps/apps/openspec-fe` |
+| BE Workflow | `/Users/oka/Desktop/openhands-apps/apps/openspec-be` |
+| QA Workflow | `/Users/oka/Desktop/openhands-apps/apps/openspec-qa` |
 
 Leave Ref and Repository path blank for these local directories. Each manifest
 and self-contained `extension.js` is at its package root. Install and enable all
-five packages at the same release version, currently 0.8.0.
+five packages at the same release version, currently 0.10.0.
 
 Installation leaves the app disabled. Review the source, then choose
 **Enable trusted app**. The app runs inside Canvas and uses its authenticated
 Agent Server adapter. Page loads, filters, navigation and refresh never edit files
 or dispatch agents. Only an explicit role Run action starts an automation, which
-may change the configured project or store according to the chosen skill.
+may change the configured project or store according to the chosen automation.
 
 To update an installed copy through the Apps screen, uninstall that app and
 install the local directory again after rebuilding. App removal does not remove
@@ -240,10 +256,10 @@ The local Canvas sidebar displays the apps in this order:
 | App | Icon |
 | --- | --- |
 | OpenSpec Kanban | Kanban columns |
-| OpenSpec SA | Connected design nodes |
-| OpenSpec FE | Browser window |
-| OpenSpec BE | Database |
-| OpenSpec QA | Shield with a check |
+| SA Workflow | Connected design nodes |
+| FE Workflow | Browser window |
+| BE Workflow | Database |
+| QA Workflow | Shield with a check |
 
 Canvas 1.24.0 does not expose manifest fields for custom icons or ordering. This
 repo supplies a small host customization for that version. It sorts the five

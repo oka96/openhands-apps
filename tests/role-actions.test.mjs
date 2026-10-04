@@ -62,7 +62,14 @@ function setup(t, options = {}) {
   Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: dom.window.localStorage });
   for (const [key, value] of Object.entries(options.storage || {})) dom.window.localStorage.setItem(key, value);
   const container = dom.window.document.querySelector('main');
-  const actions = [], requests = [], navigation = [], disposers = new Set();
+  const actions = [], requests = [], navigation = [], selections = [], storageAccess = [], disposers = new Set();
+  if (options.trackStorage) for (const method of ['getItem', 'setItem', 'removeItem']) {
+    const original = dom.window.Storage.prototype[method];
+    t.mock.method(dom.window.Storage.prototype, method, function (...args) {
+      storageAccess.push([method, ...args]);
+      return original.apply(this, args);
+    });
+  }
   let activeRole = options.role || 'SA';
   let currentDispose;
   const host = {
@@ -95,14 +102,20 @@ function setup(t, options = {}) {
   function mount(overrides = {}) {
     activeRole = overrides.role || options.role || 'SA';
     host.backend.id = overrides.backend || options.backend || 'local-main';
+    const requirement = Object.hasOwn(overrides, 'requirement') ? overrides.requirement
+      : Object.hasOwn(options, 'requirement') ? options.requirement : REQUIREMENT;
     const dispose = options.catalog ? mountRoleAutomationCatalog({ host, container, navigate: href => navigation.push(href),
       role: activeRole, showConnection: options.showConnection }) : mountRoleActions({ host, container, navigate: href => navigation.push(href),
       workspace: overrides.store || options.store || STORE,
-      requirement: overrides.requirement || options.requirement || REQUIREMENT,
+      requirement,
       onSetupComplete: options.onSetupComplete,
+      externalSelection: options.externalSelection,
+      initialStage: Object.hasOwn(overrides, 'initialStage') ? overrides.initialStage : options.initialStage,
+      initialDraft: Object.hasOwn(overrides, 'initialDraft') ? overrides.initialDraft : options.initialDraft,
+      onStageChange: (stage, state) => { selections.push([stage, state]); options.onStageChange?.(stage, state); },
       specId: Object.hasOwn(overrides, 'specId') ? overrides.specId : Object.hasOwn(options, 'specId') ? options.specId
-        : `${PREFIXES[activeRole]}-${(overrides.requirement || options.requirement || REQUIREMENT).id}-first`,
-      role: { id: activeRole, label: activeRole, specs: (overrides.requirement || options.requirement || REQUIREMENT).specs?.filter(spec => spec.role === activeRole).map(spec => spec.id), tasks: [], total: 0, complete: 0, state: 'backlog' } });
+        : requirement ? `${PREFIXES[activeRole]}-${requirement.id}-first` : null,
+      role: { id: activeRole, label: activeRole, specs: requirement?.specs?.filter(spec => spec.role === activeRole).map(spec => spec.id), tasks: [], total: 0, complete: 0, state: 'backlog' } });
     disposers.add(dispose); currentDispose = dispose;
     return dispose;
   }
@@ -117,13 +130,14 @@ function setup(t, options = {}) {
   });
   const query = selector => container.querySelector(selector);
   const button = name => [...container.querySelectorAll('button')].find(node => node.textContent === name);
-  return { dom, container, host, requests, actions, navigation, mount, dispose, query, button,
+  return { dom, container, host, requests, actions, navigation, selections, storageAccess, mount, dispose, query, button,
+    controller: () => currentDispose,
     async ready() {
       const panel = query(options.catalog ? '.osb-automation-catalog' : '.osb-role-actions');
       await eventually(() => panel.getAttribute('aria-busy') === 'false', 'connection probe');
     },
     select(stage) {
-      const node = query(`[aria-label="${activeRole} skill"]`); node.value = stage;
+      const node = query(`[aria-label="${activeRole} automation"]`); node.value = stage;
       node.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
     },
     fill(prompt, change = 'add-task-reminders') {
@@ -139,10 +153,10 @@ function setup(t, options = {}) {
 test('inline role controls default to Apply and automatically probe without connecting or dispatching', async t => {
   const app = setup(t);
   assert.equal(app.query('details, summary'), null);
-  assert.equal(app.query('.osb-role-actions').getAttribute('aria-label'), 'Run OpenSpec skill for SA');
+  assert.equal(app.query('.osb-role-actions').getAttribute('aria-label'), 'Run OpenSpec automation for SA');
   assert.equal(app.query('.osb-role-actions-body').firstElementChild, app.query('form'));
   assert.equal(app.container.querySelectorAll('select').length, 1, 'Role spec is supplied by the parent');
-  assert.equal(app.query('[aria-label="SA skill"]').value, 'apply');
+  assert.equal(app.query('[aria-label="SA automation"]').value, 'apply');
   assert.equal(app.query('[aria-label="SA new feature name"]').parentElement.hidden, true);
   assert.equal(app.query('[aria-label="SA prompt"]').required, false);
   assert.equal(app.button('Run SA Apply').disabled, true);
@@ -168,7 +182,7 @@ test('Connect installs explicitly while Check connection remains read-only', asy
 });
 
 for (const role of ROLES) for (const stage of STAGES) {
-  test(`${role} ${stage} submits exactly its selected role, skill, requirement and single prompt`, async t => {
+  test(`${role} ${stage} submits exactly its selected role, automation, requirement and single prompt`, async t => {
     const app = setup(t, { role });
     await app.ready(); app.select(stage);
     const prompt = stage === 'apply' ? '' : `Refine 标签 for ${role}; keep $(commands), "quotes" and \`text\` as data.`;
@@ -193,7 +207,7 @@ for (const role of ROLES) for (const stage of STAGES) {
   });
 }
 
-test('invalid Propose and Update inputs cannot dispatch; switching skills updates required inputs and boundaries', async t => {
+test('invalid Propose and Update inputs cannot dispatch; switching automations updates required inputs and boundaries', async t => {
   const app = setup(t);
   await app.ready();
   for (const [stage, prompt, change] of [
@@ -353,7 +367,7 @@ test('late connection, dispatch and status results cannot recreate a disposed ro
   });
 });
 
-test('the bound sibling spec is immutable and prior history never overrides the new target or skill', async t => {
+test('the bound sibling spec is immutable and prior history never overrides the new target or automation', async t => {
   const app = setup(t, { role: 'Frontend', specId: 'FE-REQ-004-second' });
   await app.ready(); app.select('update'); app.fill('Refine the second spec'); app.submit();
   await eventually(() => app.dispatched().length === 1 && app.query('a'));
@@ -361,8 +375,8 @@ test('the bound sibling spec is immutable and prior history never overrides the 
   assert.match(app.query('[role="status"]').textContent, /FE-REQ-004-second/);
   app.dispose(); app.mount({ specId: 'FE-REQ-004-first' }); await app.ready();
   assert.equal(app.query('[aria-label="Frontend spec"]'), null);
-  assert.equal(app.query('[aria-label="Frontend skill"]').value, 'apply');
-  assert.equal(app.query('[aria-label="Frontend skill"]').disabled, false);
+  assert.equal(app.query('[aria-label="Frontend automation"]').value, 'apply');
+  assert.equal(app.query('[aria-label="Frontend automation"]').disabled, false);
   assert.match(app.query('[role="status"]').textContent, /FE-REQ-004-second/);
   assert.equal(app.dispatched().length, 1);
   app.button('Start another run').click(); app.submit();
@@ -371,16 +385,16 @@ test('the bound sibling spec is immutable and prior history never overrides the 
   assert.equal(app.dispatched()[1].input.stage, 'apply');
 });
 
-test('effective configuration follows Skill and explains the supported entry point', async t => {
+test('effective configuration follows Automation and explains the supported entry point', async t => {
   const app = setup(t);
   await app.ready();
-  assert.match(app.query('.osb-automation-target').textContent, /Effective settings.*Role: SA.*openspec-apply-change.*codex-acp-demo.*1800 seconds/s);
+  assert.match(app.query('.osb-automation-target').textContent, /Effective settings.*Role: SA.*Automation: Apply.*codex-acp-demo.*1800 seconds.*Workflow resources:/s);
   assert.match(app.container.textContent, /Native Run now has no requirement context/);
   assert.match(app.container.textContent, /native profile selector does not override/);
   app.select('update');
-  assert.match(app.query('.osb-automation-target').textContent, /openspec-update-change/);
+  assert.match(app.query('.osb-automation-target').textContent, /Automation: Update/);
   app.select('propose');
-  assert.match(app.query('.osb-automation-target').textContent, /openspec-propose/);
+  assert.match(app.query('.osb-automation-target').textContent, /Automation: Propose/);
   assert.equal(app.dispatched().length, 0);
 });
 
@@ -396,7 +410,7 @@ test('business outcomes preserve lifecycle, original findings, audit details and
     ['needs_review', 'Needs review'], ['execution_error', 'Execution error']]) await t.test(kind, async child => {
     const { repository, ...configuration } = connection('probe').configuration;
     const outcome = { status: kind, blocker_type: kind === 'blocked' ? 'dependency' : null,
-      summary: '<img src=x onerror=alert(1)> Backend API missing', findings: ['Original blocker'],
+      summary: '<img src=x onerror=alert(1)> Backend API skill missing', findings: ['Original blocker'],
       audit_errors: kind === 'execution_error' ? ['Missing correction reason'] : [],
       next_action: 'Implement Backend labels first', agent_status: kind === 'execution_error' ? 'blocked' : null };
     const app = setup(child, { action: payload => payload.action === 'status' ? output({
@@ -408,6 +422,7 @@ test('business outcomes preserve lifecycle, original findings, audit details and
     await app.ready(); app.submit(); await eventually(() => app.button('Refresh run status'));
     app.button('Refresh run status').click(); await eventually(() => app.query('.osb-run-status'));
     assert.equal(app.query('.osb-run-status').textContent, `Result: ${label}`);
+    assert.equal(app.query('.osb-outcome-summary').textContent, outcome.summary, 'Authored outcome wording remains literal');
     assert.match(app.container.textContent, /Native run:.*Original blocker.*Next: Implement Backend labels first.*Run profile: previous-run-profile/s);
     assert.match(app.query('.osb-automation-target').textContent, /codex-acp-demo/);
     if (kind === 'execution_error') assert.match(app.container.textContent, /Agent reported: blocked.*Audit: Missing correction reason/s);
@@ -456,7 +471,7 @@ test('legacy metadata stays read-only and empty roles can explicitly propose a c
   await t.test('empty role', async child => {
     const app = setup(child, { role: 'Backend', specId: '', requirement: { ...REQUIREMENT, specs: REQUIREMENT.specs.filter(spec => spec.role !== 'Backend') } });
     await app.ready();
-    assert.equal(app.query('[aria-label="Backend skill"]').value, 'propose');
+    assert.equal(app.query('[aria-label="Backend automation"]').value, 'propose');
     for (const stage of ['update', 'apply']) {
       app.select(stage); app.fill('No existing spec'); app.submit(); await settled();
       assert.equal(app.button(`Run Backend ${stage === 'update' ? 'Update' : 'Apply'}`).disabled, true);
@@ -473,13 +488,13 @@ test('legacy metadata stays read-only and empty roles can explicitly propose a c
   });
 });
 
-test('previous run evidence does not lock skill or draft editing, including after remount', async t => {
+test('previous run evidence does not lock automation or draft editing, including after remount', async t => {
   const app = setup(t);
   await app.ready(); app.select('propose'); app.fill('Plan reminders', 'reminders'); app.submit();
   await eventually(() => app.query('a'));
   const history = app.stored();
   app.dispose(); app.mount(); await app.ready();
-  assert.equal(app.query('select').value, 'apply', 'Previous Propose does not choose the next skill');
+  assert.equal(app.query('select').value, 'apply', 'Previous Propose does not choose the next automation');
   assert.equal(app.query('input').value, '', 'A previous feature name is not a new draft');
   for (const stage of STAGES) {
     assert.equal(app.query('select').disabled, false);
@@ -500,7 +515,7 @@ test('previous run evidence does not lock skill or draft editing, including afte
   assert.equal(app.dispatched().length, 1);
 });
 
-test('connection probes, setup and status checks leave skill and draft inputs responsive', async t => {
+test('connection probes, setup and status checks leave automation and draft inputs responsive', async t => {
   for (const action of ['probe', 'setup', 'status']) await t.test(action, async child => {
     const pending = deferred();
     const app = setup(child, { ready: action !== 'setup',
@@ -534,7 +549,7 @@ test('connection probes, setup and status checks leave skill and draft inputs re
   });
 });
 
-test('missing, stale and wrong-role bound targets cannot dispatch any skill', async t => {
+test('missing, stale and wrong-role bound targets cannot dispatch any automation', async t => {
   for (const specId of [undefined, 'SA-REQ-004-removed', 'FE-REQ-004-first']) {
     await t.test(String(specId), async child => {
       const app = setup(child, { specId });
@@ -681,4 +696,193 @@ test('role run references survive movement from Kanban to the separately install
   assert.ok(app.button('Refresh run status'));
   assert.equal(app.button('Run Frontend Apply').disabled, true);
   assert.equal(app.dispatched().length, 1);
+});
+
+test('external automation selection has one authoritative stage and preserves the mounted draft', async t => {
+  const app = setup(t, { externalSelection: true, initialStage: 'update',
+    initialDraft: { prompt: 'Draft <script> stays literal', feature: 'new-feature' } });
+  const control = app.controller(), form = app.query('form'), prompt = app.query('textarea'), feature = app.query('input');
+  assert.deepEqual(app.selections, [['update', { disabled: false }]]);
+  assert.equal(app.query('select'), null, 'The diagram replaces the dropdown without a second accessible selector');
+  assert.equal(app.query('form').getAttribute('aria-label'), 'SA automation form');
+  assert.equal(app.query('.osb-selected-automation').getAttribute('aria-label'), 'SA selected automation');
+  await app.ready();
+  assert.deepEqual(app.selections, [['update', { disabled: false }]], 'Probe completion does not invent a selection/lock transition');
+  for (const stage of ['apply', 'propose', 'update']) {
+    assert.equal(control.selectStage(stage), true);
+    const definition = AUTOMATIONS.find(item => item.role === 'SA' && item.stage === stage);
+    assert.equal(control.getStage(), stage);
+    assert.equal(app.query('form'), form);
+    assert.equal(app.query('textarea'), prompt);
+    assert.equal(app.query('input'), feature);
+    assert.deepEqual(control.getDraft(), { stage, prompt: 'Draft <script> stays literal', feature: 'new-feature' });
+    assert.equal(app.query('.osb-selected-automation-title').textContent, `SA ${stage[0].toUpperCase()}${stage.slice(1)}`);
+    assert.equal(app.query('.osb-automation-name').textContent, definition.name);
+    assert.equal(app.query('.osb-selected-automation-definition a').getAttribute('href'), `/automations/${definition.id}`);
+    assert.equal(prompt.required, stage !== 'apply');
+    assert.equal(feature.parentElement.hidden, stage !== 'propose');
+    assert.ok(app.query('.osb-selected-automation-description').textContent.length);
+  }
+  const draft = control.getDraft(); draft.prompt = 'Mutated snapshot';
+  assert.equal(control.getDraft().prompt, 'Draft <script> stays literal');
+  assert.match(app.query('.osb-selected-automation-context').textContent, /REQ-004.*SA-REQ-004-first/);
+  app.query('.osb-selected-automation-definition a').click();
+  assert.deepEqual(app.navigation, [`/automations/${AUTOMATIONS[1].id}`]);
+  assert.equal(app.query('script'), null);
+  assert.deepEqual(app.actions.map(item => item.action), ['probe']);
+  assert.deepEqual(app.stored(), []);
+});
+
+for (const role of ROLES) test(`${role} controlled form maps all three nodes to the existing signed automation`, async t => {
+  const app = setup(t, { role, externalSelection: true });
+  await app.ready();
+  for (const [index, stage] of STAGES.entries()) {
+    assert.equal(app.controller().selectStage(stage), true);
+    app.fill(stage === 'apply' ? '' : `Requested ${stage}`, 'controlled-feature');
+    assert.equal(app.dispatched().length, index, 'Selection alone does not dispatch');
+    app.submit(); app.submit();
+    await eventually(() => app.query('.osb-run-result a')?.textContent.includes('Open automation run'));
+    const input = app.dispatched()[index].input;
+    assert.equal(input.stage, stage);
+    assert.equal(input.role, role);
+    assert.equal(input.automation_id, AUTOMATIONS.find(item => item.role === role && item.stage === stage).id);
+    assert.equal(input.requirement_id, 'REQ-004');
+    assert.equal(input.context_change, `${PREFIXES[role]}-REQ-004-first`);
+    assert.equal(input.spec_id, `${PREFIXES[role]}-REQ-004-${stage === 'propose' ? 'controlled-feature' : 'first'}`);
+    assert.equal(app.dispatched().length, index + 1, 'Duplicate explicit submissions remain blocked');
+    app.button('Start another run').click();
+  }
+});
+
+for (const role of ROLES) test(`${role} home is an editable draft with no fake target or run storage access`, async t => {
+  const app = setup(t, { role, externalSelection: true, requirement: null, specId: null, trackStorage: true });
+  const control = app.controller();
+  assert.equal(control.getStage(), 'propose');
+  assert.deepEqual(control.getDraft(), { stage: 'propose', prompt: '', feature: '' });
+  await app.ready();
+  app.fill('Private home draft', 'private-feature');
+  for (const stage of STAGES) {
+    assert.equal(control.selectStage(stage), true);
+    assert.equal(app.query('textarea').disabled, false);
+    assert.equal(app.query('input').disabled, false);
+    assert.equal(app.button(`Run ${role} ${stage[0].toUpperCase()}${stage.slice(1)}`).disabled, true);
+    assert.match(app.query('.osb-selected-automation-context').textContent, /Choose a requirement/);
+    if (stage === 'propose') assert.match(app.container.textContent, /Choose a requirement to preview the new spec name/);
+    app.submit();
+  }
+  app.button('Check connection').click(); await app.ready();
+  assert.deepEqual(control.getDraft(), { stage: 'apply', prompt: 'Private home draft', feature: 'private-feature' });
+  assert.deepEqual(app.storageAccess, [], 'No recovery key is read or written without a requirement');
+  assert.equal(app.dispatched().length, 0);
+  assert.deepEqual(app.actions.map(item => item.action), ['probe', 'probe']);
+  assert.doesNotMatch(app.container.textContent, /REQ-004|null|undefined/);
+});
+
+test('an explicit first-target handoff initializes stage and draft without persisting prompt text', async t => {
+  const app = setup(t, { externalSelection: true, requirement: null, specId: null, trackStorage: true });
+  await app.ready();
+  app.controller().selectStage('propose'); app.fill('Plan from the home draft', 'handoff-feature');
+  const draft = app.controller().getDraft();
+  app.dispose();
+  assert.deepEqual(app.storageAccess, []);
+  app.mount({ requirement: REQUIREMENT, specId: 'SA-REQ-004-first', initialStage: draft.stage, initialDraft: draft });
+  await app.ready();
+  assert.deepEqual(app.controller().getDraft(), draft);
+  app.submit();
+  await eventually(() => app.query('.osb-run-result a'));
+  assert.equal(app.dispatched()[0].input.spec_id, 'SA-REQ-004-handoff-feature');
+  assert.equal(app.dispatched()[0].input.request, draft.prompt);
+  assert.doesNotMatch(JSON.stringify(app.stored()), /Plan from the home draft/);
+  app.dispose();
+  app.mount({ requirement: REQUIREMENT, specId: 'SA-REQ-004-second' });
+  await app.ready();
+  assert.deepEqual(app.controller().getDraft(), { stage: 'apply', prompt: '', feature: '' }, 'Another target receives no implicit draft');
+});
+
+test('only an explicit null home context unlocks drafting; invalid real targets remain non-executable', async t => {
+  for (const options of [
+    { requirement: REQUIREMENT, specId: null }, { requirement: REQUIREMENT, specId: 'SA-REQ-004-missing' },
+    { requirement: REQUIREMENT, specId: 'FE-REQ-004-first' }, { requirement: null, specId: 'SA-REQ-004-first' },
+  ]) await t.test(`${options.requirement ? 'requirement' : 'no requirement'} / ${options.specId}`, async child => {
+    const app = setup(child, { ...options, externalSelection: true });
+    await app.ready();
+    for (const stage of STAGES) {
+      app.controller().selectStage(stage);
+      assert.equal(app.query('input').disabled, true);
+      assert.equal(app.query('textarea').disabled, true);
+      assert.equal(app.button(`Run SA ${stage[0].toUpperCase()}${stage.slice(1)}`).disabled, true);
+      app.submit();
+    }
+    assert.equal(app.dispatched().length, 0);
+  });
+});
+
+test('controlled dispatch locks node changes and notifies lock transitions without clearing draft', async t => {
+  const pending = deferred();
+  const app = setup(t, { externalSelection: true, initialStage: 'update',
+    action: payload => payload.action === 'dispatch' ? pending.promise : undefined });
+  await app.ready(); app.fill('Do this exact update', 'retained-feature');
+  app.submit();
+  assert.deepEqual(app.selections, [['update', { disabled: false }], ['update', { disabled: true }]]);
+  for (const stage of STAGES) assert.equal(app.controller().selectStage(stage), false);
+  assert.equal(app.controller().getStage(), 'update');
+  assert.equal(app.query('textarea').disabled, true);
+  await eventually(() => app.dispatched().length === 1);
+  const input = app.dispatched()[0].input;
+  pending.resolve(output({ version: 1, kind: 'dispatch', automation_id: input.automation_id, request_id: input.request_id, run_id: RUN_ID }));
+  await app.ready();
+  assert.deepEqual(app.selections, [['update', { disabled: false }], ['update', { disabled: true }], ['update', { disabled: false }]]);
+  assert.equal(app.controller().selectStage('propose'), true);
+  assert.deepEqual(app.controller().getDraft(), { stage: 'propose', prompt: 'Do this exact update', feature: 'retained-feature' });
+  assert.equal(app.button('Run SA Propose').disabled, true, 'Saved run still prevents another submission');
+  assert.equal(app.dispatched().length, 1);
+});
+
+test('controlled selection stays editable during discovery and rejects unknown or disposed changes', async t => {
+  const pending = deferred();
+  const app = setup(t, { externalSelection: true, action: payload => payload.action === 'probe' ? pending.promise : undefined });
+  const control = app.controller();
+  assert.equal(control.selectStage('update'), true);
+  app.fill('Draft during discovery', 'new-feature');
+  for (const stage of ['archive', '__proto__', 'constructor', '', null, undefined, { toString: () => 'propose' }]) {
+    assert.equal(control.selectStage(stage), false);
+  }
+  assert.equal(control.getStage(), 'update');
+  const selections = [...app.selections];
+  await eventually(() => app.actions.length === 1);
+  app.dispose();
+  assert.equal(control.selectStage('apply'), false);
+  pending.resolve(output(connection('probe'))); await settled();
+  assert.deepEqual(app.selections, selections);
+  assert.equal(app.container.childElementCount, 0);
+  assert.deepEqual(control.getDraft(), { stage: 'update', prompt: 'Draft during discovery', feature: 'new-feature' });
+});
+
+test('disposing an in-flight controlled dispatch suppresses late selection callbacks but keeps run recovery', async t => {
+  const pending = deferred();
+  const app = setup(t, { externalSelection: true, action: payload => payload.action === 'dispatch' ? pending.promise : undefined });
+  await app.ready(); app.submit();
+  await eventually(() => app.dispatched().length === 1);
+  const input = app.dispatched()[0].input, control = app.controller(), selections = [...app.selections];
+  app.dispose();
+  pending.resolve(output({ version: 1, kind: 'dispatch', automation_id: input.automation_id, request_id: input.request_id, run_id: RUN_ID }));
+  await settled();
+  assert.deepEqual(app.selections, selections);
+  assert.equal(control.selectStage('update'), false);
+  assert.equal(app.container.childElementCount, 0);
+  assert.equal(JSON.parse(app.stored()[0][1]).run_id, RUN_ID);
+});
+
+test('selected automation details never substitute another role or fabricate a missing definition link', async t => {
+  const app = setup(t, { externalSelection: true, initialStage: 'update', action: payload => output({
+    ...connection(payload.action, { ready: false }),
+    automations: AUTOMATIONS.filter(item => !(item.role === 'SA' && item.stage === 'update')),
+  }) });
+  await app.ready();
+  assert.match(app.query('.osb-selected-automation-definition').textContent, /Definition is not installed/);
+  assert.equal(app.query('.osb-selected-automation-definition a'), null);
+  app.controller().selectStage('apply');
+  assert.equal(app.query('.osb-selected-automation-definition a').getAttribute('href'), `/automations/${AUTOMATIONS[2].id}`);
+  assert.equal(app.button('Run SA Apply').disabled, true);
+  assert.equal(app.dispatched().length, 0);
 });

@@ -31,7 +31,7 @@ const ROLE_STATES = [
   ['done', 'blocked', 'in_progress', 'backlog'],
   ['done', 'done', 'done', 'done'],
 ];
-const UNSAFE_ARTIFACT = '# Proposal\n<script>window.artifactExecuted = true</script>\n<img src=x onerror="window.artifactExecuted = true">';
+const UNSAFE_ARTIFACT = '# Proposal\nKeep this skill note unchanged.\n<script>window.artifactExecuted = true</script>\n<img src=x onerror="window.artifactExecuted = true">';
 
 function board(workspace = DEFAULT_STORE) {
   return {
@@ -94,6 +94,30 @@ function deferred() {
   let reject;
   const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
   return { promise, resolve, reject };
+}
+
+function assertWorkflowLayout(app) {
+  const layout = app.query('.osb-workflow-layout');
+  const workspace = app.query('.osb-workflow-workspace');
+  const artifacts = app.query('.osb-workflow-artifacts');
+  assert.equal(layout.children.length, 2, 'The upper row contains only the canvas and automation form');
+  assert.equal(layout.firstElementChild.className, 'osb-workflow-rail');
+  assert.equal(layout.lastElementChild, workspace);
+  assert.equal(workspace.querySelectorAll('form.osb-skill-form').length, 1);
+  assert.equal(workspace.querySelector('[aria-label="Requirement"]'), app.query('[aria-label="Requirement"]'));
+  assert.equal(layout.nextElementSibling, artifacts, 'Source artifacts occupy their own full-width section below both columns');
+  assert.equal(artifacts.parentElement, layout.parentElement);
+  assert.equal(artifacts.querySelector('form, [aria-label="Requirement"]'), null);
+  assert.equal(app.all('.osb-workflow-frame').length, 1, 'Every role workspace mounts one complete Archify viewer');
+  assert.equal(app.query('.osb-workflow-frame').closest('.osb-workflow-rail'), layout.firstElementChild);
+  assert.equal(app.query('.osb-workflow-diagram svg'), null, 'Archify owns its isolated viewer document');
+}
+
+function workflowMessage(frame, kind, stage) {
+  const config = frame.srcdoc.match(/<script id="openspec-workflow-config" type="application\/json">([^<]*)<\/script>/);
+  assert.ok(config, 'The viewer must include an instance-scoped bridge configuration');
+  const { channel, version, token } = JSON.parse(config[1]);
+  return { channel, version, token, kind, ...(kind === 'select' ? { stage } : {}) };
 }
 
 async function settled() {
@@ -162,6 +186,13 @@ function setup(t, options = {}) {
     query: selector => document.querySelector(selector),
     all: selector => [...document.querySelectorAll(selector)],
     button: text => [...document.querySelectorAll('button')].find(node => node.textContent.includes(text)),
+    selectAutomation(stage) {
+      const frame = document.querySelector('.osb-workflow-frame');
+      assert.ok(frame, 'Expected the Archify viewer');
+      for (const kind of ['ready', 'select']) dom.window.dispatchEvent(new dom.window.MessageEvent('message', {
+        origin: 'null', source: frame.contentWindow, data: workflowMessage(frame, kind, stage),
+      }));
+    },
     change(selector, value, eventName = 'change') {
       const node = document.querySelector(selector);
       assert.ok(node, `Expected ${selector} to be rendered`);
@@ -178,23 +209,26 @@ test('role specs show independent progress and exact selectable sources across r
     request: async () => output(await fixture.run()) });
   await settled(); await settled();
   assert.equal(app.all('.osb-role-spec').length, 2);
-  assert.equal(app.all('.osb-artifacts form').length, 1);
+  assert.equal(app.all('.osb-workflow-workspace form').length, 1);
   assert.equal(app.all('.osb-role-actions summary, .osb-role-actions details').length, 0);
-  assert.equal(app.all('.osb-role-actions select').length, 1, 'Only Skill is selected inside the form');
+  assert.equal(app.all('.osb-role-actions select').length, 0, 'The diagram is the visible automation selector');
   assert.equal(app.query('.osb-completion strong').textContent, '3 of 4 roles complete');
   assert.equal(app.all('.osb-spec-count')[0].textContent, '1 / 2 specs complete');
   app.change('[aria-label="Artifact spec"]', 'FE-REQ-001-filters');
-  assert.equal(app.query('.osb-artifacts form').getAttribute('aria-label'), 'Frontend automation');
-  app.change('[aria-label="Frontend skill"]', 'update');
+  assert.equal(app.query('.osb-workflow-workspace form').getAttribute('aria-label'), 'Frontend automation form');
+  app.selectAutomation('update');
   app.change('[aria-label="Frontend prompt"]', 'Refine filter behavior', 'input');
-  const draftForm = app.query('.osb-artifacts form');
+  const draftForm = app.query('.osb-workflow-workspace form');
+  const viewer = app.query('.osb-workflow-frame');
   assert.match(app.query('.osb-markdown').textContent, /Frontend filters/);
   assert.match(app.query('.osb-artifact-path').textContent, /FE-REQ-001-filters\/specs$/);
   app.button('Tasks').click(); app.button('Source').click();
-  assert.equal(app.query('.osb-artifacts form'), draftForm);
+  assert.equal(app.query('.osb-workflow-workspace form'), draftForm);
+  assert.equal(app.query('.osb-workflow-frame'), viewer, 'Artifact tabs and modes retain the current Archify camera');
   assert.equal(app.query('[aria-label="Frontend prompt"]').value, 'Refine filter behavior');
   assert.equal(app.query('.osb-artifact-source').textContent, '# Tasks\n\n- [ ] 1.1 [Frontend] Verify Frontend filters\n');
   app.change('[aria-label="Artifact spec"]', 'FE-REQ-001-labels');
+  assert.equal(app.query('.osb-workflow-frame'), viewer, 'Choosing another spec updates the form without replacing the viewer');
   assert.match(app.query('.osb-artifact-source').textContent, /\[x\].*Frontend labels/);
   assert.equal(app.calls.length, 1);
   app.button('Refresh').click(); await settled(); await settled();
@@ -202,7 +236,7 @@ test('role specs show independent progress and exact selectable sources across r
   assert.match(app.query('.osb-artifact-source').textContent, /Frontend labels/);
   assert.equal(app.button('Source').getAttribute('aria-pressed'), 'true');
   app.button('FE-REQ-001-filters').click();
-  assert.equal(app.query('.osb-artifacts form').getAttribute('aria-label'), 'Frontend automation');
+  assert.equal(app.query('.osb-workflow-workspace form').getAttribute('aria-label'), 'Frontend automation form');
   assert.equal(app.query('[aria-label="Frontend prompt"]').value, '', 'A draft does not leak across targets');
   assert.match(app.query('.osb-artifact-source').textContent, /Contract for FE-REQ-001-filters/);
   assert.equal(app.document.activeElement, app.query('[aria-label="Artifact spec"]'));
@@ -212,7 +246,7 @@ test('role specs show independent progress and exact selectable sources across r
   assert.ok(app.automationCalls.every(call => call.method === 'GET'), 'Target changes only probe advertised services');
 });
 
-test('Role spec selects the exact target for the single inline skill form', async t => {
+test('Role spec selects the exact target for the single inline automation form', async t => {
   const fixture = await roleSpecsFixture(t);
   const actions = [];
   const automations = ROLE_IDS.flatMap((role, r) => ['propose', 'update', 'apply'].map((stage, s) => ({
@@ -242,7 +276,7 @@ test('Role spec selects the exact target for the single inline skill form', asyn
   });
   await settled(); await settled();
   app.change('[aria-label="Artifact spec"]', 'FE-REQ-001-filters');
-  app.change('[aria-label="Frontend skill"]', 'update');
+  app.selectAutomation('update');
   app.change('[aria-label="Frontend prompt"]', 'Clarify the selected filter rule.', 'input');
   await settled();
   assert.equal(app.all('form.osb-skill-form').length, 1);
@@ -255,7 +289,7 @@ test('Role spec selects the exact target for the single inline skill form', asyn
   assert.equal(dispatches[0].input.role, 'Frontend');
   assert.equal(dispatches[0].input.stage, 'update');
   assert.equal(dispatches[0].input.request, 'Clarify the selected filter rule.');
-  app.change('[aria-label="Frontend skill"]', 'propose');
+  app.selectAutomation('propose');
   assert.equal(app.query('[aria-label="Frontend new feature name"]').parentElement.hidden, false);
   assert.equal(actions.filter(action => action.action === 'dispatch').length, 1);
 });
@@ -286,7 +320,7 @@ test('a role without specs has an explicit incomplete state and has no invented 
   assert.match(app.query('.osb-content').textContent, /SA has no role changes/);
   assert.equal(app.query('.osb-completion strong').textContent, '2 of 4 roles complete');
   assert.equal(app.query('[aria-label="Artifact spec"]').value, 'new:SA');
-  assert.equal(app.query('[aria-label="SA skill"]').value, 'propose');
+  assert.equal(app.query('.osb-workflow-current').dataset.stage, 'propose');
   assert.equal(app.query('.osb-markdown'), null);
   assert.match(app.query('.osb-artifact-message').textContent, /No artifacts/);
   assert.equal(app.button('Specification'), undefined);
@@ -401,7 +435,7 @@ test('role change deep links select its exact source and fixed role within the r
   assert.equal(app.query('.osb-detail-heading h2').textContent, 'Requirement for qa');
   assert.equal(app.query('[aria-label="Artifact spec"]').value, 'FE-REQ-004-sample-qa');
   assert.match(app.query('.osb-artifact-path').textContent, /FE-REQ-004-sample-qa\/proposal.md$/);
-  assert.ok(app.query('[aria-label="Frontend skill"]'));
+  assert.ok(app.query('.osb-selected-automation-title'));
   assert.equal(app.all('[aria-label="Artifact spec"] option').length, 1);
   app.button('Design').click();
   app.button('Refresh').click(); await settled();
@@ -466,6 +500,8 @@ test('artifact mode and selected document survive successful and failed refreshe
   assert.equal(app.query('.osb-markdown h1').textContent, 'Design revision 2');
   assert.equal(app.button('Preview').getAttribute('aria-pressed'), 'true');
   assert.match(app.query('[role="alert"]').textContent, /Stale snapshot/);
+  app.button('Source').click();
+  assert.equal(app.query('.osb-artifact-source').textContent, '# Design revision 2\n\nKeep source exact.\n', 'A failed refresh leaves snapshot inspection usable');
   assert.equal(app.calls.length, 3);
 });
 
@@ -761,6 +797,12 @@ function readyAutomations(actions, workspace = DEFAULT_STORE) {
   };
 }
 
+function assertAutomationLanguage(app) {
+  const owned = app.all('.osb-header, .osb-footer, .osb-artifact-actions, .osb-automation-catalog');
+  for (const node of owned) assert.doesNotMatch(node.textContent, /\bskills?\b/i, 'Execution copy uses automation terminology');
+  for (const node of app.all('[aria-label]')) assert.doesNotMatch(node.getAttribute('aria-label'), /\bskills?\b/i);
+}
+
 for (const descriptor of ROLE_APPS) {
   test(`${descriptor.displayName} home and detail expose only its work and three related automations`, async t => {
     const actions = [];
@@ -768,28 +810,52 @@ for (const descriptor of ROLE_APPS) {
     await settled();
     assert.deepEqual(app.registrations, ['role']);
     assert.equal(app.query('.osb-header h1').textContent, descriptor.displayName);
+    assertAutomationLanguage(app);
     assert.equal(app.all('.osb-role-work-item').length, 6);
     const changes = app.all('.osb-role-work-item .osb-spec-link');
     assert.equal(changes.length, 6);
     assert.ok(changes.every(node => node.textContent.startsWith(`${descriptor.short}-`)));
-    assert.equal(app.all('.osb-automation-item').length, 3);
-    assert.deepEqual(app.all('.osb-automation-name').map(node => node.textContent),
-      ['Propose', 'Update', 'Apply'].map(stage => `OpenSpec ${descriptor.role} · ${stage}`));
-    const history = app.all('.osb-automation-item a');
-    assert.equal(history.length, 3);
-    history[0].click();
+    assertWorkflowLayout(app);
+    assert.equal(app.query('.osb-supporting-work').open, false, 'Work list remains available below the workflow');
+    assert.equal(app.query('[aria-label="Requirement"]').value, '', 'Home does not select a fabricated target');
+    assert.equal(app.query(`[aria-label="${descriptor.role} prompt"]`).disabled, false);
+    for (const stage of ['propose', 'update', 'apply']) {
+      app.selectAutomation(stage);
+      const label = stage[0].toUpperCase() + stage.slice(1);
+      assert.match(app.query('.osb-selected-automation-definition').textContent, new RegExp(`OpenSpec ${descriptor.role} · ${label}`));
+      assert.equal(app.button(`Run ${descriptor.role} ${label}`).disabled, true);
+    }
+    app.query('.osb-selected-automation-definition a').click();
     assert.match(app.navigation[0], /^\/automations\/0f0f0f0f-/);
     app.button('Refresh').click(); await settled();
-    assert.equal(app.all('.osb-automation-item').length, 3);
+    assertWorkflowLayout(app);
     app.dispose();
     app.mount(`requirements/REQ-004/changes/${descriptor.short}-REQ-004-sample-qa`);
     await settled();
     assert.equal(app.all('.osb-role-panel').length, 1);
-    assert.equal(app.all('.osb-automation-item').length, 3);
-    assert.equal(app.all('.osb-automation-catalog button').length, 0, 'Detail form owns connection controls');
+    assertWorkflowLayout(app);
+    assert.equal(app.all('.osb-automation-catalog').length, 0, 'Selected action owns its definition and connection controls');
     assert.equal(app.all('[aria-label="Artifact spec"] option').length, 1);
     assert.equal(app.query('[aria-label="Artifact spec"]').value, `${descriptor.short}-REQ-004-sample-qa`);
-    assert.equal(app.query('form.osb-skill-form').getAttribute('aria-label'), `${descriptor.role} automation`);
+    assert.equal(app.query('form.osb-skill-form').getAttribute('aria-label'), `${descriptor.role} automation form`);
+    assert.equal(app.all(`[aria-label="${descriptor.role} automation"]`).length, 0, 'No duplicate dropdown competes with the diagram');
+    const form = app.query('.osb-skill-form');
+    const source = app.query('.osb-markdown');
+    const viewer = app.query('.osb-workflow-frame');
+    app.change(`[aria-label="${descriptor.role} prompt"]`, 'Keep this draft while selecting nodes', 'input');
+    for (const stage of ['propose', 'update', 'apply']) {
+      app.selectAutomation(stage);
+      assert.equal(app.query('.osb-skill-form'), form, 'Node selection preserves the mounted form');
+      assert.equal(app.query('.osb-markdown'), source, 'Node selection preserves the mounted artifact');
+      assert.equal(app.query('.osb-workflow-frame'), viewer, 'Selection synchronization does not reset the viewer');
+      assert.equal(app.query(`[aria-label="${descriptor.role} prompt"]`).value, 'Keep this draft while selecting nodes');
+      assert.equal(app.query('.osb-workflow-current').dataset.stage, stage);
+      assert.equal(app.all('.osb-workflow-current').length, 1);
+      assert.equal(app.query(`[aria-label="${descriptor.role} new feature name"]`).required, stage === 'propose');
+      assert.equal(app.query(`[aria-label="${descriptor.role} prompt"]`).required, stage !== 'apply');
+      assertAutomationLanguage(app);
+    }
+    assert.match(app.query('.osb-markdown').textContent, /Keep this skill note unchanged\./, 'User-authored artifact wording stays literal');
     assert.equal(app.inventoryCalls.length, 0, 'Role workspace does not depend on app inventory');
     assert.ok(actions.length >= 3 && actions.every(action => action.action === 'probe'));
   });
@@ -929,16 +995,15 @@ test('a legacy Kanban change route remains a read-only summary with exact role d
   assert.equal(app.all('.osb-artifacts, .osb-skill-form').length, 0);
 });
 
-test('shared setup refreshes the detail catalog and ignores its older pending probe', async t => {
-  const staleProbe = deferred(); const actions = [];
-  let probes = 0, connected = false;
+test('shared setup updates selected automation history without remounting its draft', async t => {
+  const actions = [];
+  let connected = false;
   const validProbe = readyAutomations([]);
   const app = setup(t, { role: 'Frontend', path: 'requirements/REQ-004', automationRequest: async request => {
     if (request.method === 'GET') return validProbe(request);
     const encoded = request.body.command.match(/'([A-Za-z0-9+/=]+)'\s*$/)[1];
     const payload = JSON.parse(Buffer.from(encoded, 'base64').toString('utf8'));
     actions.push(payload.action);
-    if (payload.action === 'probe' && ++probes === 1) return staleProbe.promise;
     if (payload.action === 'setup') connected = true;
     assert.ok(['probe', 'setup'].includes(payload.action));
     const probePayload = { ...payload, action: 'probe' };
@@ -950,14 +1015,141 @@ test('shared setup refreshes the detail catalog and ignores its older pending pr
     return output(value);
   } });
   await settled();
-  assert.equal(app.all('.osb-automation-catalog a').length, 0);
+  assert.equal(app.all('.osb-selected-automation-definition a').length, 0);
+  app.selectAutomation('update');
+  app.change('[aria-label="Frontend prompt"]', 'Preserve connection setup draft', 'input');
   const form = app.query('.osb-skill-form');
   app.button('Connect shared automations').click(); await settled();
   assert.equal(app.query('.osb-skill-form'), form, 'Setup must preserve the selected action form');
-  assert.equal(app.all('.osb-automation-catalog').length, 1);
-  assert.equal(app.all('.osb-automation-catalog a').length, 3);
-  assert.match(app.query('.osb-automation-connection').textContent, /all twelve/);
-  staleProbe.reject(new Error('Old discovery failed')); await settled();
-  assert.equal(app.all('.osb-automation-catalog a').length, 3);
-  assert.deepEqual(actions, ['probe', 'probe', 'setup', 'probe']);
+  assert.equal(app.all('.osb-selected-automation-definition a').length, 1);
+  assert.match(app.query('.osb-selected-automation-definition').textContent, /Frontend · Update/);
+  assert.equal(app.query('[aria-label="Frontend prompt"]').value, 'Preserve connection setup draft');
+  assert.equal(app.query('.osb-workflow-current').dataset.stage, 'update');
+  assert.deepEqual(actions, ['probe', 'setup']);
+});
+
+test('home carries its draft only to the explicitly chosen first requirement, once', async t => {
+  const actions = [];
+  const app = setup(t, { role: 'Frontend', automationRequest: readyAutomations(actions) });
+  await settled();
+  app.selectAutomation('propose');
+  app.change('[aria-label="Frontend new feature name"]', 'Filter drafts', 'input');
+  app.change('[aria-label="Frontend prompt"]', 'Create a filter control', 'input');
+  assert.equal(app.button('Run Frontend Propose').disabled, true);
+  assert.equal(app.dom.window.localStorage.length, 0, 'Untargeted drafts are never persisted');
+  app.change('[aria-label="Requirement"]', 'REQ-004');
+  assert.deepEqual(app.navigation, [appHref(roleApp('Frontend'), DEFAULT_STORE, 'REQ-004')]);
+  app.dispose();
+  const disposeTarget = app.mount(`stores/${encodeWorkspace(DEFAULT_STORE)}/requirements/REQ-004`);
+  await settled();
+  assert.equal(app.query('[aria-label="Requirement"]').value, 'REQ-004');
+  assert.equal(app.query('[aria-label="Frontend prompt"]').value, 'Create a filter control');
+  assert.equal(app.query('[aria-label="Frontend new feature name"]').value, 'Filter drafts');
+  assert.equal(app.query('.osb-workflow-current').dataset.stage, 'propose');
+  assert.equal(app.button('Run Frontend Propose').disabled, false);
+  app.change('[aria-label="Requirement"]', 'REQ-005');
+  disposeTarget();
+  const disposeNext = app.mount(`stores/${encodeWorkspace(DEFAULT_STORE)}/requirements/REQ-005`);
+  await settled();
+  assert.equal(app.query('[aria-label="Frontend prompt"]').value, '', 'Changing an existing target discards its draft');
+  assert.equal(app.query('[aria-label="Frontend new feature name"]').value, '');
+  disposeNext(); app.mount(`stores/${encodeWorkspace(DEFAULT_STORE)}/requirements/REQ-004`);
+  await settled();
+  assert.equal(app.query('[aria-label="Frontend prompt"]').value, '', 'Consumed home draft cannot reappear');
+  assert.ok(actions.every(action => action.action === 'probe'));
+});
+
+for (const [label, destination] of [
+  ['another requirement', `stores/${encodeWorkspace(DEFAULT_STORE)}/requirements/REQ-005`],
+  ['another store', `stores/${encodeWorkspace('/tmp/other-store')}/requirements/REQ-004`],
+  ['an explicit different change route', `stores/${encodeWorkspace(DEFAULT_STORE)}/requirements/REQ-004/changes/FE-REQ-004-sample-qa`],
+  ['a missing target', `stores/${encodeWorkspace(DEFAULT_STORE)}/requirements/REQ-999`],
+]) test(`home draft cannot leak after navigation to ${label}`, async t => {
+  const app = setup(t, { role: 'Frontend' }); await settled();
+  app.change('[aria-label="Frontend prompt"]', 'Do not leak this draft', 'input');
+  app.change('[aria-label="Requirement"]', 'REQ-004');
+  app.dispose(); const disposeOther = app.mount(destination); await settled();
+  if (app.query('[aria-label="Frontend prompt"]')) assert.equal(app.query('[aria-label="Frontend prompt"]').value, '');
+  disposeOther(); app.mount(`stores/${encodeWorkspace(DEFAULT_STORE)}/requirements/REQ-004`); await settled();
+  assert.equal(app.query('[aria-label="Frontend prompt"]').value, '');
+  assert.ok(app.automationCalls.every(call => call.method === 'GET'));
+});
+
+test('dispatch locks viewer selection and leaving disposes retained frame messages', async t => {
+  const pending = deferred(); const actions = []; const probe = readyAutomations(actions);
+  const app = setup(t, { role: 'Frontend', path: 'requirements/REQ-004', automationRequest: request => {
+    if (request.method === 'GET') return probe(request);
+    const encoded = request.body.command.match(/'([A-Za-z0-9+/=]+)'\s*$/)[1];
+    const payload = JSON.parse(Buffer.from(encoded, 'base64').toString('utf8'));
+    if (payload.action !== 'dispatch') return probe(request);
+    actions.push(payload); return pending.promise;
+  } });
+  await settled();
+  app.selectAutomation('update');
+  app.change('[aria-label="Frontend prompt"]', 'Refine this exact target', 'input');
+  const form = app.query('.osb-skill-form');
+  const source = app.query('.osb-markdown');
+  app.button('Run Frontend Update').click(); await settled();
+  assert.equal(app.query('.osb-workflow-current').dataset.disabled, 'true');
+  for (const stage of ['propose', 'apply', 'propose']) app.selectAutomation(stage);
+  assert.equal(app.query('.osb-workflow-current').dataset.stage, 'update');
+  assert.equal(app.query('.osb-skill-form'), form); assert.equal(app.query('.osb-markdown'), source);
+  const retainedFrame = app.query('.osb-workflow-frame');
+  const retainedSource = retainedFrame.contentWindow;
+  const retainedSelection = workflowMessage(retainedFrame, 'select', 'propose');
+  const dispatch = actions.find(action => action.action === 'dispatch');
+  assert.equal(dispatch.input.stage, 'update');
+  assert.equal(dispatch.input.spec_id, 'FE-REQ-004-sample-qa');
+  assert.equal(dispatch.input.request, 'Refine this exact target');
+  app.dispose();
+  app.dom.window.dispatchEvent(new app.dom.window.MessageEvent('message', { origin: 'null', source: retainedSource, data: retainedSelection }));
+  pending.resolve(output({ version: 1, kind: 'dispatch', automation_id: dispatch.input.automation_id,
+    request_id: dispatch.input.request_id, run_id: '05ad810c-bcc0-409b-902d-1bc78023c22b' }));
+  await settled();
+  assert.equal(app.query('.osb-root'), null);
+  assert.equal(actions.filter(action => action.action === 'dispatch').length, 1);
+});
+
+test('a vanished first target discards its home draft even if the requirement returns on refresh', async t => {
+  const app = setup(t, { role: 'Frontend', request: (request, count) => {
+    const data = board(request.body.cwd);
+    if (count === 2) data.requirements = data.requirements.filter(item => item.id !== 'REQ-004');
+    return output(data);
+  } });
+  await settled();
+  app.change('[aria-label="Frontend prompt"]', 'Discard this missing-target draft', 'input');
+  app.change('[aria-label="Requirement"]', 'REQ-004');
+  app.dispose(); app.mount(`stores/${encodeWorkspace(DEFAULT_STORE)}/requirements/REQ-004`); await settled();
+  assert.equal(app.query('.osb-content h2').textContent, 'Requirement not found');
+  app.button('Refresh').click(); await settled();
+  assert.equal(app.query('[aria-label="Requirement"]').value, 'REQ-004');
+  assert.equal(app.query('[aria-label="Frontend prompt"]').value, '');
+  assert.equal(app.query('.osb-workflow-current').dataset.stage, 'apply', 'Recovered target gets a fresh action state');
+});
+
+test('retained target and artifact controls cannot remount actions after refresh or page disposal', async t => {
+  const fixture = await roleSpecsFixture(t);
+  const app = setup(t, { role: 'Frontend', path: 'requirements/REQ-001',
+    storage: { [storeKey('local-main')]: fixture.cwd }, request: async () => output(await fixture.run()) });
+  await settled(); await settled();
+  const oldSpec = app.query('[aria-label="Artifact spec"]');
+  const oldRequirement = app.query('[aria-label="Requirement"]');
+  const oldSource = app.button('Source');
+  app.button('Refresh').click(); await settled(); await settled();
+  const form = app.query('.osb-skill-form'), currentSpec = app.query('[aria-label="Artifact spec"]');
+  const selected = currentSpec.value, calls = app.automationCalls.length;
+  const otherSpec = [...currentSpec.options].find(option => option.value !== selected).value;
+  oldSpec.value = otherSpec; oldSpec.dispatchEvent(new app.dom.window.Event('change'));
+  oldRequirement.dispatchEvent(new app.dom.window.Event('change')); oldSource.click();
+  await settled();
+  assert.equal(app.query('.osb-skill-form'), form);
+  assert.equal(currentSpec.value, selected, 'Old target controls cannot alter the current selection');
+  assert.equal(app.button('Preview').getAttribute('aria-pressed'), 'true');
+  assert.equal(app.automationCalls.length, calls);
+  const currentSource = app.button('Source');
+  app.dispose(); currentSpec.value = otherSpec;
+  currentSpec.dispatchEvent(new app.dom.window.Event('change')); currentSource.click(); await settled();
+  assert.equal(app.automationCalls.length, calls, 'Disposed target controls cannot start detached discovery');
+  assert.equal(app.query('.osb-root'), null);
+  assert.deepEqual(app.navigation, []);
 });

@@ -1,16 +1,16 @@
 {
   "schema_version": 1,
   "name": "openspec-qa",
-  "display_name": "OpenSpec QA",
-  "version": "0.8.0",
+  "display_name": "QA Workflow",
+  "version": "0.10.0",
   "entrypoint": "extension.js",
   "contributes": {
     "pages": [
       {
         "id": "role",
-        "title": "OpenSpec QA",
+        "title": "QA Workflow",
         "path": "/role",
-        "nav_label": "OpenSpec QA",
+        "nav_label": "QA Workflow",
         "description": "QA role work, source artifacts and related OpenSpec automations."
       }
     ]

@@ -27,6 +27,7 @@ test('five distinct manifests share the release version and match fixed app rout
   assert.equal(apps.length, 5);
   assert.equal(new Set(apps.map(app => app.name)).size, 5);
   assert.deepEqual(ROLE_APPS.map(app => app.role), ['SA', 'Frontend', 'Backend', 'QA']);
+  assert.deepEqual(ROLE_APPS.map(app => app.displayName), ['SA Workflow', 'FE Workflow', 'BE Workflow', 'QA Workflow']);
   const packageInfo = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
   const lock = JSON.parse(await readFile(path.join(root, 'package-lock.json'), 'utf8'));
   assert.equal(packageInfo.version, APP_VERSION);
@@ -39,6 +40,7 @@ test('five distinct manifests share the release version and match fixed app rout
     assert.equal(manifest.version, APP_VERSION);
     assert.equal(manifest.entrypoint, 'extension.js');
     assert.deepEqual(manifest.contributes.pages.map(page => [page.id, page.path, page.title]), [[app.pageId, app.path, app.displayName]]);
+    assert.equal(manifest.contributes.pages[0].nav_label, app.displayName);
   }
 });
 

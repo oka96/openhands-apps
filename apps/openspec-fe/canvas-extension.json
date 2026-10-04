@@ -1,16 +1,16 @@
 {
   "schema_version": 1,
   "name": "openspec-fe",
-  "display_name": "OpenSpec FE",
-  "version": "0.8.0",
+  "display_name": "FE Workflow",
+  "version": "0.10.0",
   "entrypoint": "extension.js",
   "contributes": {
     "pages": [
       {
         "id": "role",
-        "title": "OpenSpec FE",
+        "title": "FE Workflow",
         "path": "/role",
-        "nav_label": "OpenSpec FE",
+        "nav_label": "FE Workflow",
         "description": "FE role work, source artifacts and related OpenSpec automations."
       }
     ]

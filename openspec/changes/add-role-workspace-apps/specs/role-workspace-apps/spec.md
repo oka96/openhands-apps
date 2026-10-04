@@ -7,10 +7,10 @@ Provide independent role workspaces for inspecting OpenSpec artifacts and delibe
 ## ADDED Requirements
 
 ### Requirement: Independent fixed-role apps
-The system SHALL provide separately installable OpenSpec SA, OpenSpec FE, OpenSpec BE and OpenSpec QA Canvas apps alongside OpenSpec Kanban. Each role app SHALL have an immutable role, display that role's work and offer its existing Propose, Update and Apply automations.
+The system SHALL provide separately installable SA Workflow, FE Workflow, BE Workflow and QA Workflow Canvas apps alongside OpenSpec Kanban. The app management name, sidebar label and page heading SHALL use these names. Each role app SHALL have an immutable role, display that role's work and offer its existing Propose, Update and Apply automations.
 
 #### Scenario: Open a role app directly
-- **WHEN** a user opens OpenSpec FE
+- **WHEN** a user opens FE Workflow
 - **THEN** the app lists Frontend work and the three Frontend automations, without presenting another role's artifacts or execution targets
 
 ### Requirement: Contextual Kanban navigation
@@ -18,14 +18,14 @@ Kanban SHALL retain the shared requirement overview and role progress, and link 
 
 #### Scenario: Follow a selected change
 - **WHEN** the user clicks a Backend change in a Kanban requirement detail
-- **THEN** OpenSpec BE opens that requirement and change from the same store, and its Kanban link returns to that requirement in the same store
+- **THEN** BE Workflow opens that requirement and change from the same store, and its Kanban link returns to that requirement in the same store
 
 #### Scenario: Switch stores between apps
 - **WHEN** a store is selected after other apps have activated
 - **THEN** a newly mounted page uses explicit link context or the latest shared store selection, not activation-time state
 
 ### Requirement: Role artifact workspace
-Each role app SHALL show its requirement progress, role change selector and Proposal, Design, Specification and Tasks artifacts with safe Markdown preview and literal source modes. Artifact content SHALL expand to its full height. Kanban SHALL place artifact inspection and skill execution in these role apps.
+Each role app SHALL show its requirement progress, role change selector and Proposal, Design, Specification and Tasks artifacts with safe Markdown preview and literal source modes. Artifact content SHALL expand to its full height. Kanban SHALL place artifact inspection and automation execution in these role apps.
 
 #### Scenario: Inspect and switch artifacts
 - **WHEN** the user changes the selected role change or artifact tab
@@ -39,7 +39,7 @@ Role apps SHALL reuse the twelve existing native definitions and shared connecti
 - **THEN** its related Propose, Update and Apply definitions link to native automation history, and no run is created
 
 #### Scenario: Explicit role execution
-- **WHEN** the user submits an eligible skill for a selected role change
+- **WHEN** the user submits an eligible automation for a selected role change
 - **THEN** the existing validated dispatch path uses the fixed app role and selected change, prevents duplicate submission and retains its recoverable run reference
 
 ### Requirement: Explicit unavailable and invalid states
@@ -57,12 +57,54 @@ Unavailable or disabled role apps SHALL be identified by Kanban with a Manage Ap
 - **WHEN** an existing requirement has no QA change
 - **THEN** the QA workspace explains the empty role and permits Propose with a change from the same requirement as context
 
+### Requirement: Automation terminology with stable execution
+App-owned controls, help, footers, configuration captions, accessible names and errors SHALL describe execution as automation rather than skills. The workflow diagram SHALL select Propose, Update and Apply automations with one authoritative action state. Existing OpenSpec action mappings, role/stage payloads, app routes, automation IDs, run history and source artifact text SHALL be preserved.
+
+#### Scenario: Choose an automation
+- **WHEN** the user selects Propose, Update or Apply in a role workflow
+- **THEN** automation labels and the matching form requirements update without dispatch, and explicit submission still targets the corresponding existing OpenSpec action for that role
+
+#### Scenario: Existing installation is upgraded
+- **WHEN** the five apps are updated to the workflow naming release
+- **THEN** prior deep links, shared store selection, existing automation history, distinct sidebar icons and Kanban/SA/FE/BE/QA order remain valid
+
 ### Requirement: Shared build and safe lifecycle
 All five app packages SHALL be built and validated from shared source. Page disposal and later refreshes SHALL suppress stale async UI writes and retain existing request recovery without introducing new definitions, store mutations or credentials.
 
 #### Scenario: Leave while loading
 - **WHEN** a user navigates away while discovery or artifact loading is pending
 - **THEN** the disposed page is not repopulated by the late response and a new page uses its own current context
+
+### Requirement: Interactive Archify workflow workspace
+Each role app SHALL show the actual Archify Propose, Update and Apply viewer in a larger left canvas and the selected automation details, real target selection and prompt form in a smaller right column. Archify zoom, pan, reset, finder, focus, lens, radar, route, presentation, theme/style and export controls SHALL remain available where supported by the viewer. Nodes SHALL support pointer and keyboard selection, expose selection accessibly and never dispatch on selection. The selected automation marker and form stage SHALL stay synchronized independently of viewer inspection focus, preserving draft text and current source view during node changes. Narrow layouts SHALL stack the panels without horizontal page overflow or hidden controls.
+
+#### Scenario: Explore the interactive canvas
+- **WHEN** the user zooms, pans, resets the view, searches or inspects a route
+- **THEN** Archify's native viewer performs that interaction without changing the automation target, losing the prompt or starting work
+
+#### Scenario: Reject unrelated or stale viewer messages
+- **WHEN** another window, an invalid message or a disposed viewer sends a selection event
+- **THEN** the app ignores it and preserves its current form stage, target and draft
+
+#### Scenario: Select a workflow node
+- **WHEN** the user clicks or activates Update with the keyboard in any role app
+- **THEN** Update is selected on the diagram and the right panel shows that role's existing Update automation, prompt and applicable run control without remounting or clearing the draft or artifact
+
+#### Scenario: Start without a requirement
+- **WHEN** the user opens a role home and selects an automation
+- **THEN** its prompt can be drafted on the right, Run remains disabled until an actual requirement/spec is selected, and an explicit first-target selection may carry that in-memory draft only to the exact selected destination
+
+#### Scenario: Preserve target and artifact boundaries
+- **WHEN** the user changes an already selected requirement or role spec, switches artifact Preview/Source, or changes an automation during dispatch
+- **THEN** a different target clears its draft, artifact mode changes preserve the current form and source target, and in-flight dispatch refuses workflow node changes
+
+#### Scenario: Source artifacts remain available
+- **WHEN** the selected role spec has source artifacts
+- **THEN** a full-width section below both upper columns retains safe Markdown Preview, literal Source and the artifact tabs, and content expands in the page without a nested vertical scrollbar
+
+#### Scenario: Typical flow is illustrative
+- **WHEN** a user selects any valid automation node out of diagram order
+- **THEN** selection is allowed subject to existing target validation and only explicit Run submits one corresponding automation; no other node runs automatically
 
 ### Requirement: Distinct ordered native sidebar navigation
 The local Canvas sidebar SHALL give Kanban, SA, FE, BE and QA distinct icons and display these apps in that order regardless of activation timing. Visual and keyboard navigation order SHALL agree. Existing app identities, links and unrelated app behavior SHALL be preserved.

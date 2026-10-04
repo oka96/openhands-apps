@@ -1,0 +1,130 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Role workflow",
+    "output": "docs/workflows/interactive/role-workflow.html",
+    "locale": "en",
+    "animation": "none",
+    "quality_profile": "showcase",
+    "legend": {
+      "mode": "hidden"
+    },
+    "repository": {
+      "url": "https://github.com/oka96/openhands-apps.git",
+      "revision": "74c2051740e51116517db6a60fb822d13c126632",
+      "link_mode": "local-only"
+    }
+  },
+  "lanes": [
+    {
+      "id": "role-automation",
+      "label": "Choose a role automation"
+    }
+  ],
+  "mainPath": [
+    "action-propose",
+    "action-update",
+    "action-apply"
+  ],
+  "nodes": [
+    {
+      "id": "action-propose",
+      "lane": "role-automation",
+      "col": 0,
+      "type": "backend",
+      "label": "Propose",
+      "sublabel": "Plan a new role change",
+      "width": 176,
+      "height": 68,
+      "sources": [
+        {
+          "path": "src/role-actions.js",
+          "line": 4,
+          "end_line": 12,
+          "label": "Role action definitions"
+        },
+        {
+          "path": "src/role-actions.js",
+          "line": 259,
+          "end_line": 279,
+          "label": "Explicit form submission"
+        }
+      ]
+    },
+    {
+      "id": "action-update",
+      "lane": "role-automation",
+      "col": 2,
+      "type": "backend",
+      "label": "Update",
+      "sublabel": "Revise existing planning",
+      "width": 176,
+      "height": 68,
+      "sources": [
+        {
+          "path": "src/role-actions.js",
+          "line": 4,
+          "end_line": 12,
+          "label": "Role action definitions"
+        },
+        {
+          "path": "src/role-actions.js",
+          "line": 259,
+          "end_line": 279,
+          "label": "Explicit form submission"
+        }
+      ]
+    },
+    {
+      "id": "action-apply",
+      "lane": "role-automation",
+      "col": 5,
+      "type": "backend",
+      "label": "Apply",
+      "sublabel": "Implement planned tasks",
+      "width": 176,
+      "height": 68,
+      "sources": [
+        {
+          "path": "src/role-actions.js",
+          "line": 4,
+          "end_line": 12,
+          "label": "Role action definitions"
+        },
+        {
+          "path": "src/role-actions.js",
+          "line": 259,
+          "end_line": 279,
+          "label": "Explicit form submission"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "planning-revision",
+      "from": "action-propose",
+      "to": "action-update",
+      "label": "Revise planning",
+      "role": "main"
+    },
+    {
+      "id": "revision-implementation",
+      "from": "action-update",
+      "to": "action-apply",
+      "label": "Implement tasks",
+      "role": "main"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "slate",
+      "title": "Choose an automation",
+      "items": [
+        "Arrows show the typical planning-to-implementation order.",
+        "Select any automation independently. Only Run starts work."
+      ]
+    }
+  ]
+}

@@ -330,8 +330,8 @@ class Bridge:
         return {'kind': kind, 'ready': ready, 'automations': [
                 {'id': selected[pair_key(role, stage)]['id'], 'name': automation_name(role, stage), 'stage': stage, 'role': role}
                 for role, stage in PAIRS if pair_key(role, stage) in selected], 'configuration': self.safe_config(),
-                'message': 'Connected to all twelve role and skill automations.' if ready else
-                'Connect automations to install dedicated role skills and remove superseded OpenSpec definitions.'}
+                'message': 'Connected to all twelve role automations.' if ready else
+                'Connect automations to install dedicated role automations and remove superseded OpenSpec definitions.'}
 
     def probe(self):
         inventory = self.inventory()
@@ -423,7 +423,7 @@ class Bridge:
         fields = {'automation_id', 'request_id', 'stage', 'spec_store', 'requirement_id', 'context_change', 'role', 'spec_id', 'change', 'request'}
         require(isinstance(data, dict) and set(data) == fields, 'Unexpected role automation input fields')
         require(identifier(data['automation_id']) and identifier(data['request_id']), 'Invalid automation or request ID')
-        require(data['stage'] in STAGES and data['role'] in ROLES, 'Unsupported OpenSpec skill or role')
+        require(data['stage'] in STAGES and data['role'] in ROLES, 'Unsupported automation or role')
         require(local_path(data['spec_store']) == Path(self.config['spec_store']), 'Selected store does not match the configured role workflow')
         require(isinstance(data['requirement_id'], str) and re.fullmatch(r'[A-Z][A-Z0-9]*-[0-9]+', data['requirement_id']), 'Invalid requirement ID')
         prefix = ROLE_PREFIXES[data['role']] + '-' + data['requirement_id'] + '-'

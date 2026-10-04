@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "path": "docs/workflows/role-workflow.html",
+    "sha256": "54275c09f12604b502caf01849ab8f8d330710b869ced9641df7b10f62f60441",
+    "bytes": 744689
+  },
+  "specification": {
+    "path": "docs/workflows/role-workflow.workflow.json",
+    "sha256": "a9eb7a0018b908209510a6c27c29cbcb0e091f768208a950082b74c68355f506",
+    "bytes": 2412
+  },
+  "output": {
+    "path": "docs/workflows/role-workflow.svg",
+    "sha256": "b06f48ded412f7a4d0302c8d44a5ecfd9f2648c6556c581dfbc0725c6ccbcca1",
+    "bytes": 8395
+  },
+  "finalizeReceipt": "docs/workflows/review-2/role-workflow.finalize-summary.json",
+  "viewBox": "40 78 192 300",
+  "actions": [
+    "action-propose",
+    "action-update",
+    "action-apply"
+  ],
+  "preserved": [
+    "generated defs",
+    "action groups",
+    "relationship paths",
+    "relationship labels",
+    "semantic styles",
+    "theme palette values"
+  ],
+  "adaptations": [
+    "crop framing to measured bounds plus 8px",
+    "omit standalone grid and lane framing",
+    "order action groups for keyboard navigation",
+    "scope semantic styles",
+    "accessible group wrapper",
+    "light palette default"
+  ],
+  "integrationValidation": "Standalone Archify checks do not validate embedded app interactions."
+}

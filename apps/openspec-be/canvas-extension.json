@@ -1,16 +1,16 @@
 {
   "schema_version": 1,
   "name": "openspec-be",
-  "display_name": "OpenSpec BE",
-  "version": "0.8.0",
+  "display_name": "BE Workflow",
+  "version": "0.10.0",
   "entrypoint": "extension.js",
   "contributes": {
     "pages": [
       {
         "id": "role",
-        "title": "OpenSpec BE",
+        "title": "BE Workflow",
         "path": "/role",
-        "nav_label": "OpenSpec BE",
+        "nav_label": "BE Workflow",
         "description": "BE role work, source artifacts and related OpenSpec automations."
       }
     ]

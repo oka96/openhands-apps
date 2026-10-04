@@ -21,7 +21,7 @@ export function validateRoleInput(input) {
   const fields = ['stage', 'spec_store', 'requirement_id', 'context_change', 'role', 'spec_id', 'change', 'request'];
   const withIds = object(input) && (Object.hasOwn(input, 'automation_id') || Object.hasOwn(input, 'request_id'));
   requireValue(exact(input, withIds ? [...fields, 'automation_id', 'request_id'] : fields), 'Invalid role automation input fields.');
-  requireValue(STAGES.includes(input.stage) && ROLES.includes(input.role), 'Choose a supported role and OpenSpec skill.');
+  requireValue(STAGES.includes(input.stage) && ROLES.includes(input.role), 'Choose a supported role and OpenSpec automation.');
   requireValue(path(input.spec_store), 'Load an absolute local spec store directory first.');
   requireValue(typeof input.requirement_id === 'string' && input.requirement_id.length <= 160 &&
     /^[A-Z][A-Z0-9]*-[0-9]+$/.test(input.requirement_id), 'Choose a valid requirement.');

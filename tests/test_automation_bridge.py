@@ -221,11 +221,15 @@ class BridgeTests(unittest.TestCase):
         self.automations.append(copy.deepcopy(legacy))
         probe = self.client.probe()
         self.assertFalse(probe['ready'])
+        self.assertIn('dedicated role automations', probe['message'])
+        self.assertNotIn('skill', probe['message'].lower())
         self.assertEqual(probe['automations'], [])
         self.assertFalse(self.client.root.exists())
         self.assertTrue(all(method == 'GET' for _, method, *_ in self.calls))
         setup = self.client.setup()
         self.assertTrue(setup['ready'])
+        self.assertEqual(setup['message'], 'Connected to all twelve role automations.')
+        self.assertEqual(self.webhooks[0]['name'], 'OpenSpec role dashboard · explicit skill requests')
         self.assertEqual(len(setup['automations']), 12)
         self.assertNotIn(legacy, self.automations)
         self.assertEqual(setup['configuration']['spec_store'], str(self.store))
@@ -347,8 +351,10 @@ class BridgeTests(unittest.TestCase):
                        {'requirement_id': 'REQ-999'}, {'automation_id': identity()}, {'profile': 'other'},
                        {'request_id': '../escape'}, {'change': 'different-change'},
                        {'spec_id': 'FE-REQ-001-first'}, {'spec_id': 'SA-REQ-002-first'}, {'spec_id': 'SA-REQ-001-unregistered'}):
-            with self.subTest(change=change), self.assertRaises(bridge.BridgeError):
+            with self.subTest(change=change), self.assertRaises(bridge.BridgeError) as failure:
                 self.client.dispatch({**self.input(), **change})
+            if 'role' in change or 'stage' in change:
+                self.assertEqual(str(failure.exception), 'Unsupported automation or role')
         self.assertFalse(self.events)
 
     def test_propose_refuses_existing_change_and_malformed_role_folder(self):
