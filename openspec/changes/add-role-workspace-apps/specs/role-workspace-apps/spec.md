@@ -88,7 +88,11 @@ Each role app SHALL show the actual Archify Propose, Update and Apply viewer in 
 
 #### Scenario: Select a workflow node
 - **WHEN** the user clicks or activates Update with the keyboard in any role app
-- **THEN** Update is selected on the diagram and the right panel shows that role's existing Update automation, prompt and applicable run control without remounting or clearing the draft or artifact
+- **THEN** Update is selected on the diagram and the right panel shows that role's existing Update automation, prompt and applicable run control without remounting or clearing the draft or artifact, and no node-details popup obscures the canvas
+
+#### Scenario: Embedded node details stay hidden
+- **WHEN** node selection or viewer inspection focuses a node in a role workflow
+- **THEN** the embedded Semantic Passport panel remains hidden while native zoom, pan and other canvas controls remain usable; the standalone Archify artifact retains its own viewer behavior
 
 #### Scenario: Start without a requirement
 - **WHEN** the user opens a role home and selects an automation

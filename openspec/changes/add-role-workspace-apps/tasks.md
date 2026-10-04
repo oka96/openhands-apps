@@ -44,3 +44,8 @@
 - [x] 8.1 Deliver a landscape workflow suited to the large canvas and integrate the complete Archify viewer with its native controls, isolated runtime and validated selection bridge; verify message boundaries, keyboard selection, state synchronization and disposal.
 - [x] 8.2 Widen the workflow area, narrow the form and move Source artifacts below both columns on all role homes/details, preserving target/draft/lifecycle behavior and full-height Preview/Source.
 - [x] 8.3 Build and validate version 0.10.0, update all five installed packages, and verify native canvas interactions, desktop/narrow layout, all roles, artifact placement and unchanged automation runs; record evidence.
+
+## 9. Unobstructed automation selection
+
+- [x] 9.1 Hide the Semantic Passport popup only in the embedded role viewer, preserving native selection, keyboard handling and canvas controls; build and validate all five packages at 0.10.1.
+- [x] 9.2 Update the installed packages and verify pointer/keyboard selection without the popup, preserved prompts and working zoom in all four roles; record browser evidence without dispatching work.

@@ -88,6 +88,8 @@ export function createWorkflowDocument(html, config) {
   const selectionSelectors = STAGES.map(stage => `html[data-automation-selected="${stage}"] body .diagram-container [data-node-id="action-${stage}"] > rect:not(.c-mask)`).join(', ');
   const styles = `<style>
     ${selectionSelectors} { stroke-width: 3; }
+    /* Role automation details already live in the adjacent form. */
+    html body #focus-chip { display: none !important; }
     html body .openspec-workflow-sr { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   </style>`;
   return html.replace('<head>', `<head>${csp}`)
