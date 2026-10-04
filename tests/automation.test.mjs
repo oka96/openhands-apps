@@ -112,6 +112,14 @@ test('malformed or mismatched connection and dispatch responses fail closed', as
     { ...dispatched, secret: 'private' }]) await assert.rejects(callRoleAutomation(host(data), 'dispatch', baseInput));
 });
 
+test('role app presentation does not weaken shared twelve-definition readiness validation', async () => {
+  const complete = info('probe', true);
+  const roleOnly = { ...complete, automations: complete.automations.filter(row => row.role === 'Frontend') };
+  await assert.rejects(callRoleAutomation(host(roleOnly), 'probe'), /Invalid role automation response/);
+  assert.equal((await callRoleAutomation(host({ ...roleOnly, ready: false }), 'probe')).automations.length, 3);
+  assert.deepEqual(await callRoleAutomation(host(complete), 'probe'), complete);
+});
+
 test('unknown outcomes are bounded and never retried automatically or leak host errors', async () => {
   const adapter = host(dispatched, { fail: true });
   await assert.rejects(callRoleAutomation(adapter, 'dispatch', baseInput), error => /outcome is unknown/.test(error.message) && !error.message.includes('secret'));

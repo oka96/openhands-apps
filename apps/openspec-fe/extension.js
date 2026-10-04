@@ -2722,8 +2722,8 @@ function stageLabel(stage) {
 function time(value) {
   return new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
-function activate(host) {
-  return activateApp(host, KANBAN_APP);
+function activateRoleApp(host, roleId) {
+  return activateApp(host, roleApp(roleId));
 }
 function activateApp(host, app) {
   const fixedRole = app.role || null;
@@ -3375,6 +3375,11 @@ function activateApp(host, app) {
     for (const dispose of [...mounts]) dispose();
     unregister();
   };
+}
+
+// apps/openspec-fe/src/extension.js
+function activate(host) {
+  return activateRoleApp(host, "Frontend");
 }
 export {
   activate

@@ -3,6 +3,8 @@ import { callRoleAutomation, validateRoleInput } from './automation.js';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const SKILLS = { propose: 'Propose', update: 'Update', apply: 'Apply' };
 const SKILL_NAMES = { propose: 'openspec-propose', update: 'openspec-update-change', apply: 'openspec-apply-change' };
+const ROLES = ['SA', 'Frontend', 'Backend', 'QA'];
+const SHARED_SETUP_HELP = 'This shared connection maintains all twelve existing role automations: Propose, Update and Apply for SA, Frontend, Backend and QA. Setup starts no agent.';
 const HELP = {
   propose: 'Add a named spec to this requirement and role. Stops before implementation.',
   update: 'Revise the selected spec and its tasks. Submitting authorizes the edits in your prompt. Sibling changes stay unchanged. Stops before implementation.',
@@ -19,7 +21,83 @@ function button(text, action) {
   node.addEventListener('click', action); return node;
 }
 
-export function mountRoleActions({ host, container, navigate, workspace, requirement, role, specId }) {
+function requireRole(role) {
+  if (!ROLES.includes(role)) throw new Error('Choose a supported fixed OpenSpec role.');
+}
+
+function navigationLink(text, href, navigate) {
+  const node = el('a', 'osb-run-link', text); node.href = href;
+  node.addEventListener('click', event => {
+    if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault(); navigate(href);
+  });
+  return node;
+}
+
+export function mountRoleAutomationCatalog({ host, container, navigate, role, showConnection = true }) {
+  requireRole(role);
+  let disposed = false, busy = false, connection = null, failed = false;
+  const panel = el('section', 'osb-automation-catalog');
+  panel.setAttribute('aria-label', `${role} related automations`);
+  panel.append(el('h2', '', 'Related automations'),
+    el('p', 'osb-muted', `These three native automations belong to ${role}. Open their history here; submit a skill from a requirement’s role workspace.`));
+  const status = el('p', 'osb-automation-connection'); status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
+  const list = el('ul', 'osb-automation-list');
+  const setup = button('Connect shared automations', () => connect('setup'));
+  const probe = button('Check connection', () => connect('probe'));
+  const controls = el('div', 'osb-run-controls'); controls.append(setup, probe);
+  const setupHelp = el('p', 'osb-muted', SHARED_SETUP_HELP);
+  panel.append(list, status, setupHelp);
+  if (showConnection) panel.append(controls);
+  container.append(panel);
+
+  function render() {
+    list.replaceChildren();
+    for (const [stage, label] of Object.entries(SKILLS)) {
+      const row = el('li', 'osb-automation-item'); row.dataset.stage = stage;
+      row.append(el('h3', '', label), el('p', 'osb-muted', SKILL_NAMES[stage]));
+      const definition = connection?.automations.find(item => item.role === role && item.stage === stage);
+      if (definition) {
+        row.append(el('p', 'osb-automation-name', definition.name),
+          navigationLink(`Open ${label} history →`, `/automations/${definition.id}`, navigate));
+      } else {
+        row.append(el('p', 'osb-muted', connection ? 'Definition is not installed. Connect shared automations.'
+          : failed ? 'Definition availability could not be checked.' : 'Checking definition…'));
+      }
+      list.append(row);
+    }
+    setup.disabled = probe.disabled = busy;
+    setup.hidden = Boolean(connection?.ready);
+    panel.setAttribute('aria-busy', String(busy));
+  }
+
+  async function connect(action) {
+    if (disposed || busy) return;
+    busy = true; failed = false;
+    status.textContent = action === 'setup' ? 'Connecting the shared twelve automations…' : 'Checking shared automation connection…';
+    render();
+    try {
+      const value = await callRoleAutomation(host, action);
+      if (disposed) return;
+      connection = value;
+      status.textContent = value.ready ? 'Shared connection ready · all twelve role automations verified.'
+        : 'Shared connection needs setup or an update. Existing history remains available.';
+    } catch (error) {
+      if (!disposed) {
+        connection = null; failed = true;
+        status.textContent = error.message || 'Cannot check the shared automation connection.';
+      }
+    } finally {
+      busy = false;
+      if (!disposed) render();
+    }
+  }
+  connect('probe');
+  return () => { disposed = true; panel.remove(); };
+}
+
+export function mountRoleActions({ host, container, navigate, workspace, requirement, role, specId, onSetupComplete }) {
+  requireRole(role?.id);
   let disposed = false, busy = false, dispatching = false, connection = null, last = null, lastStatus = null;
   const supportsSpecs = Array.isArray(requirement.specs) && Array.isArray(role.specs);
   const specs = supportsSpecs ? requirement.specs.filter(spec => spec.role === role.id && role.specs.includes(spec.id)) : [];
@@ -61,11 +139,11 @@ export function mountRoleActions({ host, container, navigate, workspace, require
   const body = el('div', 'osb-role-actions-body');
   const connectionText = el('p', 'osb-muted');
   const target = el('p', 'osb-automation-target');
-  const launchHelp = el('p', 'osb-muted', 'Submit here in OpenSpec Kanban after choosing a requirement, Role spec and Skill. Native Run now has no requirement context. The profile shown here comes from role-workflow.json; the native profile selector does not override it.');
-  const setup = button('Connect automations', () => connect('setup'));
+  const launchHelp = el('p', 'osb-muted', 'Submit here in this role workspace after choosing a requirement, Role spec and Skill. OpenSpec Kanban links to each role app. Native Run now has no requirement context. The profile shown here comes from role-workflow.json; the native profile selector does not override it.');
+  const setup = button('Connect shared automations', () => connect('setup'));
   const probe = button('Check connection', () => connect('probe'));
   const connectionActions = el('div', 'osb-run-controls'); connectionActions.append(setup, probe);
-  const setupHelp = el('p', 'osb-muted', 'Connect installs Propose, Update and Apply for each role and removes superseded OpenSpec automations. It starts no agent.');
+  const setupHelp = el('p', 'osb-muted', SHARED_SETUP_HELP);
   const form = el('form', 'osb-skill-form'); form.setAttribute('aria-label', `${role.id} automation`);
   const skillLabel = el('label', 'osb-skill-field'); skillLabel.append(el('span', 'osb-label', 'Skill'));
   const skill = el('select'); skill.setAttribute('aria-label', `${role.id} skill`);
@@ -148,14 +226,15 @@ export function mountRoleActions({ host, container, navigate, workspace, require
   async function connect(action) {
     if (busy || disposed) return;
     busy = true; update();
-    connectionText.textContent = action === 'setup' ? 'Connecting role automations…' : 'Checking role automations…';
+    connectionText.textContent = action === 'setup' ? 'Connecting the shared twelve automations…' : 'Checking shared automation connection…';
     try {
       const value = await callRoleAutomation(host, action);
       if (disposed) return;
       connection = value;
       const matches = value.configuration.spec_store === workspace;
       connectionText.textContent = !matches ? 'This store is not the configured automation store. Update role-workflow.json and reconnect.'
-        : value.ready ? 'Connected · Propose, Update, Apply' : value.message;
+        : value.ready ? 'Shared connection ready · all twelve role automations verified.' : value.message;
+      if (action === 'setup') onSetupComplete?.();
     } catch (error) {
       if (!disposed) { connection = null; target.textContent = ''; connectionText.textContent = error.message || 'Cannot connect to automations.'; }
     } finally { busy = false; if (!disposed) update(); }

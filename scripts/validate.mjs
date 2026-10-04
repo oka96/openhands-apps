@@ -3,22 +3,25 @@ import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { APP_VERSION, KANBAN_APP, ROLE_APPS } from "../src/app-config.js";
 
 const run = promisify(execFile);
 const defaultRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const apps = [KANBAN_APP, ...ROLE_APPS];
 
-export async function validateApp(root = defaultRoot, { dist = false } = {}) {
+export async function validateApp(root = defaultRoot, { dist = false, app } = {}) {
   const manifest = JSON.parse(await readFile(path.join(root, "canvas-extension.json"), "utf8"));
-  if (manifest.schema_version !== 1 || manifest.name !== "openspec-progress"
-      || manifest.version !== "0.7.0" || manifest.entrypoint !== "extension.js"
-      || manifest.display_name !== "OpenSpec Kanban") {
-    throw new Error("Unexpected OpenSpec Kanban App manifest metadata.");
+  const expected = app ?? apps.find(item => item.name === manifest.name);
+  if (!expected || manifest.schema_version !== 1 || manifest.name !== expected.name
+      || manifest.version !== APP_VERSION || manifest.entrypoint !== "extension.js"
+      || manifest.display_name !== expected.displayName) {
+    throw new Error("Unexpected OpenSpec App manifest metadata.");
   }
   const pages = manifest.contributes?.pages;
-  if (!Array.isArray(pages) || pages.length !== 1 || pages[0].id !== "progress"
-      || pages[0].path !== "/progress" || pages[0].title !== "OpenSpec Kanban"
-      || pages[0].nav_label !== "OpenSpec Kanban") {
-    throw new Error("The manifest must declare only the OpenSpec Kanban page.");
+  if (!Array.isArray(pages) || pages.length !== 1 || pages[0].id !== expected.pageId
+      || pages[0].path !== expected.path || pages[0].title !== expected.displayName
+      || pages[0].nav_label !== expected.displayName) {
+    throw new Error(`The manifest must declare only the ${expected.displayName} page.`);
   }
   if (dist) {
     const files = await readdir(path.join(root, "dist"), { recursive: true });
@@ -43,20 +46,32 @@ export async function validateApp(root = defaultRoot, { dist = false } = {}) {
   for (const [pattern, description] of forbidden) {
     if (pattern.test(source)) throw new Error(`The browser module contains a ${description}.`);
   }
+  const registered = [...source.matchAll(/\.registerPage\s*\(\s*["']([^"']+)["']/g)];
+  for (const [, page] of registered) {
+    if (page !== expected.pageId) throw new Error(`The browser module registers undeclared page ${page}.`);
+  }
   await run(process.execPath, ["--check", entrypoint]);
+  return true;
+}
+
+export async function validateAllApps(root = defaultRoot) {
+  for (const app of apps) {
+    const packageRoot = path.resolve(root, app.packageDirectory);
+    await validateApp(packageRoot, { app });
+    await validateApp(packageRoot, { dist: true, app });
+    const [published, built] = await Promise.all([
+      readFile(path.join(packageRoot, "extension.js")),
+      readFile(path.join(packageRoot, "dist/extension.js")),
+    ]);
+    if (!published.equals(built)) throw new Error(`${app.name}/extension.js is stale; run npm run build.`);
+  }
   return true;
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
-    await validateApp();
-    await validateApp(defaultRoot, { dist: true });
-    const [published, built] = await Promise.all([
-      readFile(path.join(defaultRoot, "extension.js")),
-      readFile(path.join(defaultRoot, "dist", "extension.js")),
-    ]);
-    if (!published.equals(built)) throw new Error("extension.js is stale; run npm run build.");
-    console.log("OpenSpec Kanban App manifest and browser module are valid.");
+    await validateAllApps();
+    console.log("All five OpenSpec App manifests and browser modules are valid.");
   } catch (error) {
     console.error(`App validation failed: ${error.message}`);
     process.exitCode = 1;

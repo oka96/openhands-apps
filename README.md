@@ -1,8 +1,14 @@
-# OpenSpec Kanban for OpenHands
+# OpenSpec apps for OpenHands
+
+Five native Canvas apps share one OpenSpec store and the existing twelve role
+automations. **OpenSpec Kanban** shows requirement progress. **OpenSpec SA**,
+**OpenSpec FE**, **OpenSpec BE** and **OpenSpec QA** each provide a fixed-role work
+list, source-artifact workspace and the role's three related automations.
+The app boundary organizes navigation; it does not isolate permissions or data.
 
 Role skill controls show the actual profile, mapped OpenSpec skill, project,
 store and timeout from `role-workflow.json`. Uninstalled changes are marked as
-requiring reconnect. Submit from the requirement's Role spec/Skill controls;
+requiring reconnect. Submit from a role workspace's Role spec/Skill controls;
 native Automation **Run now** lacks the required request context, and its profile
 selector does not override this workflow's configured profile.
 
@@ -13,14 +19,10 @@ next action and configuration used by that run. A checked task may be reopened
 only with an exact-task correction reason. Missing, invalid or older reports
 show an explicit fallback to native history rather than guessing an outcome.
 
-A native **Apps for Agent Canvas** page showing requirement delivery across
-**SA, Frontend, Backend, and QA**. Each requirement has all four roles, and each
-role can own several feature specs. A requirement reaches **Done** only when
-every role has specs and every spec has its specification and a nonempty,
-fully checked task list.
-
-The redesigned app keeps the `openspec-progress` identity and `/progress` route.
-Its source and built entrypoint live in this repository. The sample store lives
+A requirement reaches **Done** only when every role has changes, all planning
+sources are present, and every change has a nonempty, fully checked task list.
+Kanban keeps the `openspec-progress` identity and `/progress` route. All five
+apps build from shared source in this repository. The sample store lives
 separately at `/Users/oka/Desktop/openspec-store` and is registered with OpenSpec
 as `openspec-store`.
 
@@ -34,14 +36,22 @@ the connected Agent Server.
   Verification, Blocked, and Done.
 - **List** gives a compact cross-requirement comparison.
 - Search by requirement or spec ID/title, summary, or change name; filter by an unfinished role.
-- Open a card to see all four owners and each role's named specs, progress, notes,
-  and checklists. Select a spec ID or use **Role spec** above the artifact viewer
-  to inspect its own Proposal, Design, Specification and Tasks artifacts.
-- Documents open in **Preview** with formatted Markdown. Select **Source** to
+- Open a card to see all four owners and each role's named specs, progress, notes
+  and checklists. Follow a role or spec link to its dedicated workspace.
+- In the role workspace, use **Role spec** to inspect that change's Proposal,
+  Design, Specification and Tasks. Documents open in **Preview**. Select **Source** to
   inspect the exact text. Your choice stays selected when switching documents
   or refreshing the requirement.
 - Edit files in the store, then select **Refresh**. Progress and checklists are read-only in the board.
-- In **Source artifacts**, choose **Role spec** and then **Skill** to start work through native OpenHands automations. The selected spec determines its role and target.
+- In the role workspace's **Source artifacts**, choose **Role spec** and then
+  **Skill** to start work through native OpenHands automations. The role stays
+  fixed to that app, and the selected change determines the target.
+
+Kanban links preserve the exact store, requirement and selected change. **Back
+to Kanban** returns to the same requirement and store. New pages read the latest
+shared store selection unless the link provides explicit store context. Missing
+or disabled role apps show an unavailable state with **Manage Apps**; failed app
+inventory checks show unknown availability and can be retried with Refresh.
 
 The six sample requirements are **illustrative fixtures**. Their seeded
 checkboxes demonstrate different stages; they are not claims that the sample
@@ -64,15 +74,18 @@ does not edit documents, check tasks, or start automations. If formatting fails,
 
 ## Run a role skill
 
-Open a requirement and scroll below the role progress cards to **Source artifacts**.
-Choose **Role spec** to select both the source document and automation target.
+Open its dedicated role app, then choose a requirement from that role's work list.
+Each role app lists its three related native Propose, Update and Apply automations
+with history links. Within a requirement, choose **Role spec** under **Source
+artifacts** to select both the source document and automation target.
 One inline **Skill** form appears immediately below it. For a role with no specs,
 choose its **New spec** entry to propose the first feature. Switching documents or
 Preview/Source preserves your draft; choosing a different Role spec opens that
 target's form.
-Select **Connect automations** once to install twelve dedicated role-and-skill definitions from
-`/Users/oka/Desktop/openhands-automation` and enable signed local requests. This
-starts no agent. Each role has its own Propose, Update and Apply automation.
+Use the shared automation connection setup once to install or reconnect the
+twelve role-and-skill definitions from `/Users/oka/Desktop/openhands-automation`
+and enable signed local requests. This starts no agent. Every role app uses that
+same connection and filters its catalog to the three automations for its role.
 Connect also retires the seven legacy stage and three generic role definitions
 after verifying they have no active runs; existing conversations remain available.
 The panel shows the configured code project and spec store.
@@ -83,7 +96,7 @@ alone does not start a run or discard its history.
 
 Choose a skill and supply one prompt:
 
-- **Propose** requires a new feature slug and prompt. It derives the role spec ID, plans that spec, and registers it under the selected requirement after validation.
+- **Propose** requires a new feature slug and prompt. It derives the role change ID and plans the new folder under the selected requirement; no registration file is needed.
 - **Update** requires a selected spec and revision prompt. Submitting authorizes the stated edits to that spec and its tasks. It stops before implementation.
 - **Apply** works through the selected spec's pending tasks. Its prompt is optional and can narrow the work or add constraints; required verification still applies.
 
@@ -147,8 +160,9 @@ FE-REQ-003-filters/
 ```
 
 Multiple capability specifications are compiled into its Specification preview.
-All four source tabs and `/progress/changes/FE-REQ-003-filters` resolve to that
-selected change. Untagged checklist tasks inherit the folder's role. Optional
+All four source tabs in the corresponding role app resolve to that selected
+change. Existing Kanban `/progress/changes/FE-REQ-003-filters` links retain the
+change context and link into its role workspace. Untagged checklist tasks inherit the folder's role. Optional
 explicit task tags must match it; local task numbers can repeat in sibling changes.
 
 Optional presentation context belongs in ordinary proposal Markdown:
@@ -185,13 +199,19 @@ REQ-003 demonstrates two changes per role; REQ-002 retains Solution Design progr
 
 ## Install or update
 
-In **Customize → Apps → Add app**:
+Build once, then add each package in **Customize → Apps → Add app**:
 
-| Field | Value |
+| App | App source |
 | --- | --- |
-| App source | `/Users/oka/Desktop/openhands-apps` |
-| Ref | Leave blank for a local source |
-| Repository path | Leave blank; the manifest is at the package root |
+| OpenSpec Kanban | `/Users/oka/Desktop/openhands-apps` |
+| OpenSpec SA | `/Users/oka/Desktop/openhands-apps/apps/openspec-sa` |
+| OpenSpec FE | `/Users/oka/Desktop/openhands-apps/apps/openspec-fe` |
+| OpenSpec BE | `/Users/oka/Desktop/openhands-apps/apps/openspec-be` |
+| OpenSpec QA | `/Users/oka/Desktop/openhands-apps/apps/openspec-qa` |
+
+Leave Ref and Repository path blank for these local directories. Each manifest
+and self-contained `extension.js` is at its package root. Install and enable all
+five packages at the same release version, currently 0.8.0.
 
 Installation leaves the app disabled. Review the source, then choose
 **Enable trusted app**. The app runs inside Canvas and uses its authenticated
@@ -204,9 +224,51 @@ install the local directory again after rebuilding. App removal does not remove
 the separate spec store. The earlier package remains at
 `/Users/oka/Desktop/openhands-automation/apps/openspec-progress` for rollback.
 
-The native route is `/extensions/openspec-progress/progress`; requirement routes
-use `/progress/requirements/REQ-001`. `/progress/changes/<role-change>` links
-select that change within its requirement.
+Kanban's native route is `/extensions/openspec-progress/progress`; role home
+routes are `/extensions/openspec-{sa,fe,be,qa}/role`. Cross-app links encode the
+selected store as a canonical base64url path component:
+`stores/<store-token>/requirements/<id>/changes/<change>`.
+The token preserves a local path; it is not a secret. Legacy Kanban routes
+`/progress/requirements/REQ-001` and `/progress/changes/<role-change>` remain
+supported. A stale, mismatched or wrong-role target shows an explicit error
+instead of choosing another execution target.
+
+### Sidebar icons and order
+
+The local Canvas sidebar displays the apps in this order:
+
+| App | Icon |
+| --- | --- |
+| OpenSpec Kanban | Kanban columns |
+| OpenSpec SA | Connected design nodes |
+| OpenSpec FE | Browser window |
+| OpenSpec BE | Database |
+| OpenSpec QA | Shield with a check |
+
+Canvas 1.24.0 does not expose manifest fields for custom icons or ordering. This
+repo supplies a small host customization for that version. It sorts the five
+OpenSpec navigation entries before rendering, so keyboard and visual order
+match even when apps finish loading in a different sequence. Other apps retain
+their original slots and icons.
+
+Apply it to the installed Canvas package, then reload OpenHands:
+
+```sh
+npm run canvas:navigation -- /Users/oka/Desktop/openhands-demo/node_modules/@openhands/agent-canvas
+```
+
+The command checks the package version and expected code before writing, saves
+the original files, and can be run again safely. It also revises the changed
+asset URLs so a normal reload picks up the customization despite browser caching;
+no server restart is required. Reinstalling Canvas may replace
+the customization; run the command again for the supported version. A different
+version or unexpected code is rejected before any file is changed.
+
+Restore the original sidebar with:
+
+```sh
+npm run canvas:navigation -- /Users/oka/Desktop/openhands-demo/node_modules/@openhands/agent-canvas --restore
+```
 
 ## Develop and verify
 
@@ -220,15 +282,21 @@ npm ci
 npm run check
 ```
 
-`check` builds one self-contained browser ESM module, runs the data and UI tests,
-checks the manifest/bundle, and validates the app's OpenSpec change. The build
-validates `dist/extension.js` before copying it to the checked-in `extension.js`.
+`check` builds all five self-contained browser ESM modules, runs the data, UI
+and packaging tests, validates every manifest/bundle and checks the OpenSpec
+changes. Each package has its own `dist/extension.js`. The build validates all
+five distributions before copying them to the corresponding checked-in
+`extension.js` files. `npm run validate` checks source/distribution parity for
+every package. Tiny entrypoints bind each role while the collector, rendering,
+navigation and automation logic stay shared.
 
 The official Canvas validator can also be run on this machine:
 
 ```sh
-node /Users/oka/Desktop/openhands-demo/node_modules/@openhands/extensions/skills/canvas-extension-api/scripts/validate-extension.mjs .
-node /Users/oka/Desktop/openhands-demo/node_modules/@openhands/extensions/skills/canvas-extension-api/scripts/validate-extension.mjs . --dist --marker 'OpenSpec Kanban'
+for app in . apps/openspec-sa apps/openspec-fe apps/openspec-be apps/openspec-qa; do
+  node /Users/oka/Desktop/openhands-demo/node_modules/@openhands/extensions/skills/canvas-extension-api/scripts/validate-extension.mjs "$app"
+  node /Users/oka/Desktop/openhands-demo/node_modules/@openhands/extensions/skills/canvas-extension-api/scripts/validate-extension.mjs "$app" --dist
+done
 ```
 
 The app targets manifest schema **1**, host API **1**, Canvas **1.24.0**, and
@@ -241,7 +309,9 @@ Limits: 50 requirements, 20 specs and 500 tasks per requirement, 160 characters
 per spec ID, 64 KiB per Markdown file, 128 KiB combined specs per change (at most 20 capabilities),
 and 512 KiB aggregate response.
 
-The store directory and role-run references are remembered in browser storage,
-separately per backend. Filters survive navigation within an activation. A failed refresh
+The store directory and role-run references are remembered in shared browser
+storage, separately per backend. Store selection is read afresh on each page mount;
+role-run references do not depend on which app opened them. Filters survive
+navigation within an activation. A failed refresh
 retains the last successful snapshot with a visible **Stale snapshot** warning.
 The board's checklist progress does not certify implementation, tests, or release.

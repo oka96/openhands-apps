@@ -17,7 +17,7 @@ const bundle = await build({
     }));
   } }],
 });
-const { mountRoleActions } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString('base64')}`);
+const { mountRoleActions, mountRoleAutomationCatalog } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString('base64')}`);
 
 const STORE = '/Users/oka/Desktop/openspec-store';
 const PROJECT = '/Users/oka/Desktop/openhands-demo';
@@ -95,9 +95,11 @@ function setup(t, options = {}) {
   function mount(overrides = {}) {
     activeRole = overrides.role || options.role || 'SA';
     host.backend.id = overrides.backend || options.backend || 'local-main';
-    const dispose = mountRoleActions({ host, container, navigate: href => navigation.push(href),
+    const dispose = options.catalog ? mountRoleAutomationCatalog({ host, container, navigate: href => navigation.push(href),
+      role: activeRole, showConnection: options.showConnection }) : mountRoleActions({ host, container, navigate: href => navigation.push(href),
       workspace: overrides.store || options.store || STORE,
       requirement: overrides.requirement || options.requirement || REQUIREMENT,
+      onSetupComplete: options.onSetupComplete,
       specId: Object.hasOwn(overrides, 'specId') ? overrides.specId : Object.hasOwn(options, 'specId') ? options.specId
         : `${PREFIXES[activeRole]}-${(overrides.requirement || options.requirement || REQUIREMENT).id}-first`,
       role: { id: activeRole, label: activeRole, specs: (overrides.requirement || options.requirement || REQUIREMENT).specs?.filter(spec => spec.role === activeRole).map(spec => spec.id), tasks: [], total: 0, complete: 0, state: 'backlog' } });
@@ -117,7 +119,7 @@ function setup(t, options = {}) {
   const button = name => [...container.querySelectorAll('button')].find(node => node.textContent === name);
   return { dom, container, host, requests, actions, navigation, mount, dispose, query, button,
     async ready() {
-      const panel = query('.osb-role-actions');
+      const panel = query(options.catalog ? '.osb-automation-catalog' : '.osb-role-actions');
       await eventually(() => panel.getAttribute('aria-busy') === 'false', 'connection probe');
     },
     select(stage) {
@@ -157,7 +159,7 @@ test('Connect installs explicitly while Check connection remains read-only', asy
   const app = setup(t, { ready: false });
   await app.ready();
   assert.equal(app.button('Run SA Apply').disabled, true);
-  app.button('Connect automations').click();
+  app.button('Connect shared automations').click();
   await eventually(() => !app.button('Run SA Apply').disabled);
   app.button('Check connection').click();
   await eventually(() => app.actions.length === 3 && app.query('.osb-role-actions').getAttribute('aria-busy') === 'false');
@@ -505,7 +507,7 @@ test('connection probes, setup and status checks leave skill and draft inputs re
       action: payload => payload.action === action ? pending.promise : undefined });
     if (action !== 'probe') {
       await app.ready();
-      if (action === 'setup') app.button('Connect automations').click();
+      if (action === 'setup') app.button('Connect shared automations').click();
       else {
         app.submit(); await eventually(() => app.button('Refresh run status'));
         app.button('Refresh run status').click();
@@ -547,4 +549,136 @@ test('missing, stale and wrong-role bound targets cannot dispatch any skill', as
       assert.equal(app.dispatched().length, 0);
     });
   }
+});
+
+for (const role of ROLES) test(`${role} catalog shows only its three existing definitions and history without dispatch`, async t => {
+  const app = setup(t, { catalog: true, role });
+  await app.ready();
+  const rows = [...app.container.querySelectorAll('.osb-automation-item')];
+  const expected = AUTOMATIONS.filter(item => item.role === role);
+  assert.deepEqual(rows.map(row => row.dataset.stage), STAGES);
+  assert.deepEqual(rows.map(row => row.querySelector('.osb-automation-name').textContent), expected.map(item => item.name));
+  const links = [...app.container.querySelectorAll('a')];
+  assert.deepEqual(links.map(link => link.getAttribute('href')), expected.map(item => `/automations/${item.id}`));
+  for (const link of links) link.click();
+  assert.deepEqual(app.navigation, expected.map(item => `/automations/${item.id}`));
+  assert.match(app.query('.osb-automation-connection').textContent, /all twelve role automations verified/);
+  assert.equal(app.button('Connect shared automations').hidden, true);
+  assert.equal(app.query('form, select, input, textarea'), null);
+  assert.deepEqual(app.actions.map(item => item.action), ['probe']);
+  assert.deepEqual(app.stored(), []);
+});
+
+test('catalog setup is explicitly shared across twelve definitions and checking only probes', async t => {
+  const app = setup(t, { catalog: true, ready: false });
+  await app.ready();
+  assert.match(app.container.textContent, /all twelve existing role automations/);
+  assert.match(app.query('.osb-automation-connection').textContent, /needs setup or an update/);
+  assert.equal(app.button('Connect shared automations').hidden, false);
+  app.button('Connect shared automations').click();
+  await eventually(() => app.button('Connect shared automations').hidden);
+  app.button('Check connection').click();
+  await eventually(() => app.actions.length === 3 && app.query('.osb-automation-catalog').getAttribute('aria-busy') === 'false');
+  assert.deepEqual(app.actions.map(item => item.action), ['probe', 'setup', 'probe']);
+  assert.ok(app.actions.every(item => !Object.hasOwn(item, 'input')));
+  assert.deepEqual(app.stored(), []);
+});
+
+test('catalog reserves missing role slots without borrowing another role definition', async t => {
+  const app = setup(t, { catalog: true, role: 'Backend', action: payload => output({
+    ...connection(payload.action, { ready: false }),
+    automations: AUTOMATIONS.filter(item => item.role !== 'Backend' || item.stage === 'apply'),
+  }) });
+  await app.ready();
+  assert.equal(app.container.querySelectorAll('.osb-automation-item').length, 3);
+  assert.equal(app.container.querySelectorAll('a').length, 1);
+  assert.match(app.query('a').getAttribute('href'), new RegExp(AUTOMATIONS.find(item => item.role === 'Backend' && item.stage === 'apply').id));
+  assert.equal([...app.container.querySelectorAll('.osb-automation-item')].filter(row => row.textContent.includes('Definition is not installed')).length, 2);
+  assert.doesNotMatch(app.container.textContent, /OpenSpec (SA|Frontend|QA) ·/);
+  assert.deepEqual(app.actions.map(item => item.action), ['probe']);
+});
+
+test('catalog rejects a role-only ready claim and permits an explicit read-only retry', async t => {
+  const app = setup(t, { catalog: true, action: (payload, count) => count === 1 ? output({
+    ...connection(payload.action), automations: AUTOMATIONS.filter(item => item.role === 'SA'),
+  }) : undefined });
+  await app.ready();
+  assert.match(app.query('.osb-automation-connection').textContent, /Invalid role automation response/);
+  assert.equal(app.container.querySelectorAll('a').length, 0);
+  assert.match(app.container.textContent, /availability could not be checked/);
+  app.button('Check connection').click();
+  await eventually(() => app.container.querySelectorAll('a').length === 3);
+  assert.deepEqual(app.actions.map(item => item.action), ['probe', 'probe']);
+});
+
+test('detail catalog hides duplicate connection controls and still probes without writing state', async t => {
+  const app = setup(t, { catalog: true, role: 'QA', showConnection: false });
+  await app.ready();
+  assert.equal(app.container.querySelectorAll('.osb-automation-item').length, 3);
+  assert.equal(app.query('button'), null);
+  assert.deepEqual(app.actions.map(item => item.action), ['probe']);
+  assert.deepEqual(app.stored(), []);
+});
+
+test('disposed catalog ignores late probe and setup results', async t => {
+  for (const action of ['probe', 'setup']) await t.test(action, async child => {
+    const pending = deferred();
+    const app = setup(child, { catalog: true, ready: false,
+      action: payload => payload.action === action ? pending.promise : undefined });
+    if (action === 'setup') { await app.ready(); app.button('Connect shared automations').click(); }
+    await eventually(() => app.actions.some(item => item.action === action));
+    app.dispose();
+    assert.equal(app.container.childElementCount, 0);
+    pending.resolve(output(connection(action)));
+    await settled();
+    assert.equal(app.container.childElementCount, 0);
+    assert.equal(app.dispatched().length, 0);
+  });
+});
+
+test('catalog requires a canonical fixed role before contacting the backend', async t => {
+  const app = setup(t, { catalog: true });
+  await app.ready(); app.dispose();
+  const calls = app.requests.length;
+  for (const role of ['FE', 'BE', 'Admin', null]) assert.throws(() => mountRoleAutomationCatalog({
+    host: app.host, container: app.container, navigate: () => {}, role,
+  }), /supported fixed OpenSpec role/);
+  assert.equal(app.requests.length, calls);
+  assert.equal(app.container.childElementCount, 0);
+});
+
+test('only successful explicit setup notifies its mounted role workspace to refresh the catalog', async t => {
+  let completions = 0;
+  const pending = deferred();
+  const app = setup(t, { ready: false, onSetupComplete: () => { completions++; },
+    action: (payload, count) => payload.action === 'setup' && count > 3 ? pending.promise : undefined });
+  await app.ready();
+  assert.equal(completions, 0);
+  app.button('Connect shared automations').click();
+  await app.ready();
+  assert.equal(completions, 1);
+  app.button('Check connection').click();
+  await app.ready();
+  assert.equal(completions, 1);
+  app.button('Connect shared automations').click();
+  await eventually(() => app.actions.length === 4);
+  app.dispose(); pending.resolve(output(connection('setup')));
+  await settled();
+  assert.equal(completions, 1);
+  assert.equal(app.dispatched().length, 0);
+});
+
+test('role run references survive movement from Kanban to the separately installed role app', async t => {
+  const app = setup(t, { role: 'Frontend' });
+  app.host.extension = { name: 'openspec-progress' };
+  await app.ready(); app.submit();
+  await eventually(() => app.button('Refresh run status'));
+  const stored = app.stored();
+  app.dispose();
+  app.host.extension = { name: 'openspec-fe' };
+  app.mount(); await app.ready();
+  assert.deepEqual(app.stored(), stored);
+  assert.ok(app.button('Refresh run status'));
+  assert.equal(app.button('Run Frontend Apply').disabled, true);
+  assert.equal(app.dispatched().length, 1);
 });

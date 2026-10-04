@@ -199,3 +199,27 @@
 @media(max-width:650px) { .osb-header { align-items:flex-start; } .osb-root h1 { font-size:23px; } .osb-symbol { display:none; } .osb-live { display:none; } .osb-header-actions { gap:6px; } .osb-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); } .osb-store-field { display:block; } .osb-store .osb-button { padding:8px 10px; } .osb-toolbar { gap:8px; } .osb-search { order:3; width:100%; } .osb-toolbar select { flex:1; min-width:120px; } .osb-views { width:100%; } .osb-board-caption { display:block; } .osb-board-caption span { display:block; margin-top:4px; } .osb-detail-heading { display:block; } .osb-detail-heading .osb-header-actions { margin-top:12px; } .osb-completion { flex-wrap:wrap; } .osb-completion .osb-meter { min-width:130px; } .osb-pipeline { grid-template-columns:1fr; } .osb-footer { align-items:flex-start; flex-direction:column; } }
 @media(prefers-reduced-motion:reduce) { .osb-card { transition:none; } .osb-card:hover { transform:none; } }
 @media(max-width:650px) { .osb-artifact-actions { padding:0 14px 16px; } .osb-artifact-toolbar { padding:0 14px 8px; gap:4px; } .osb-artifact-tabs { padding:0; gap:15px; } .osb-artifact-modes { width:auto; margin:0; } .osb-markdown { padding:20px; } }
+
+.osb-card-title { color:inherit; text-decoration:none; }
+.osb-card-title:hover,.osb-role-link:hover { text-decoration:underline; }
+.osb-app-availability { display:flex; flex-wrap:wrap; align-items:center; gap:10px 18px; margin:0 0 20px; padding:14px 16px; background:#f5f7fa; border:1px solid var(--border); border-radius:8px; font-size:12px; }
+.osb-role-link { color:var(--accent); font-weight:600; }
+.osb-role-unavailable { color:var(--muted); font-size:11px; }
+.osb-role-panel > .osb-role-link,.osb-role-panel > .osb-role-unavailable { display:block; margin-top:14px; }
+.osb-role-home-heading { display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom:20px; }
+.osb-role-work-list { display:grid; gap:14px; margin-top:18px; }
+.osb-role-work-item { background:white; border:1px solid var(--border); border-radius:10px; padding:20px; }
+.osb-role-work-item h3 { margin:0 0 10px; font-size:16px; }
+.osb-role-work-item .osb-spec-link { display:block; margin-top:8px; }
+.osb-role-workspace .osb-pipeline { grid-template-columns:minmax(0,1fr); }
+.osb-role-workspace .osb-metrics { display:block; }
+@media(max-width:650px) { .osb-role-home-heading { align-items:flex-start; flex-direction:column; } .osb-app-availability { align-items:flex-start; flex-direction:column; } }
+.osb-automation-catalog { background:white; border:1px solid var(--border); border-radius:10px; padding:20px; margin:0 0 24px; }
+.osb-automation-catalog h2 { font-size:15px; margin:0 0 8px; }
+.osb-automation-catalog > p { font-size:11px; line-height:1.65; margin:8px 0; }
+.osb-automation-list { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; list-style:none; padding:0; margin:16px 0; }
+.osb-automation-item { min-width:0; padding:14px; border:1px solid var(--border); border-radius:7px; overflow-wrap:anywhere; }
+.osb-automation-item h3 { font-size:13px; margin:0 0 8px; }
+.osb-automation-item p,.osb-automation-item a { font-size:11px; line-height:1.6; margin:6px 0; }
+.osb-automation-catalog [hidden] { display:none; }
+@media(max-width:650px) { .osb-automation-list { grid-template-columns:1fr; } }

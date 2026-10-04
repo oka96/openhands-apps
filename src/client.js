@@ -1,4 +1,6 @@
 import collectorSource from './collector.cjs?raw';
+import { validateWorkspace } from './workspace.js';
+export { validateWorkspace } from './workspace.js';
 
 const ROLES = ['SA', 'Frontend', 'Backend', 'QA'];
 const LABELS = ['Solution Architect', 'Frontend', 'Backend', 'Quality Assurance'];
@@ -19,13 +21,6 @@ function check(value, message = 'The store returned invalid or inconsistent boar
 function unique(values) { return new Set(values).size === values.length; }
 function sameTask(left, right) {
   return ['id', 'description', 'done', 'line', 'sourcePath', 'role'].every(key => left[key] === right[key]);
-}
-
-export function validateWorkspace(value) {
-  check(typeof value === 'string' && value.startsWith('/') && value.length <= 4096 && !/[\0\r\n\\]/.test(value)
-    && !value.split('/').some(part => ['.', '..', '.local'].includes(part)),
-  'Enter an absolute store directory on the connected Agent Server, without symlinks or parent-directory segments.');
-  return value.replace(/\/{2,}/g, '/').replace(/\/+$/, '') || '/';
 }
 
 function validateTask(task, tasksPath, specId) {

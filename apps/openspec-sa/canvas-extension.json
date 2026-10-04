@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "name": "openspec-sa",
+  "display_name": "OpenSpec SA",
+  "version": "0.8.0",
+  "entrypoint": "extension.js",
+  "contributes": {
+    "pages": [
+      {
+        "id": "role",
+        "title": "OpenSpec SA",
+        "path": "/role",
+        "nav_label": "OpenSpec SA",
+        "description": "SA role work, source artifacts and related OpenSpec automations."
+      }
+    ]
+  }
+}
