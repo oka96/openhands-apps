@@ -2,9 +2,10 @@ import { callRoleAutomation, validateRoleInput } from './automation.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const SKILLS = { propose: 'Propose', update: 'Update', apply: 'Apply' };
+const SKILL_NAMES = { propose: 'openspec-propose', update: 'openspec-update-change', apply: 'openspec-apply-change' };
 const HELP = {
   propose: 'Add a named spec to this requirement and role. Stops before implementation.',
-  update: 'Revise the selected spec and its tasks. Submitting authorizes the edits in your prompt. Shared planning and sibling specs stay unchanged. Stops before implementation.',
+  update: 'Revise the selected spec and its tasks. Submitting authorizes the edits in your prompt. Sibling changes stay unchanged. Stops before implementation.',
   apply: 'Work through this role’s selected spec tasks. Check tasks only after their required verification succeeds.',
 };
 function el(tag, className, text) {
@@ -19,7 +20,7 @@ function button(text, action) {
 }
 
 export function mountRoleActions({ host, container, navigate, workspace, requirement, role, specId }) {
-  let disposed = false, busy = false, dispatching = false, connection = null, last = null;
+  let disposed = false, busy = false, dispatching = false, connection = null, last = null, lastStatus = null;
   const supportsSpecs = Array.isArray(requirement.specs) && Array.isArray(role.specs);
   const specs = supportsSpecs ? requirement.specs.filter(spec => spec.role === role.id && role.specs.includes(spec.id)) : [];
   const prefix = `${{ SA: 'SA', Frontend: 'FE', Backend: 'BE', QA: 'QA' }[role.id]}-${requirement.id}-`;
@@ -33,6 +34,7 @@ export function mountRoleActions({ host, container, navigate, workspace, require
       && (!value.run_id || UUID.test(value.run_id))) last = value;
   } catch { /* Optional storage. */ }
   function remember(value) {
+    lastStatus = null;
     last = value;
     try { if (value) localStorage.setItem(key, JSON.stringify(value)); else localStorage.removeItem(key); } catch { /* Optional storage. */ }
   }
@@ -59,6 +61,7 @@ export function mountRoleActions({ host, container, navigate, workspace, require
   const body = el('div', 'osb-role-actions-body');
   const connectionText = el('p', 'osb-muted');
   const target = el('p', 'osb-automation-target');
+  const launchHelp = el('p', 'osb-muted', 'Submit here in OpenSpec Kanban after choosing a requirement, Role spec and Skill. Native Run now has no requirement context. The profile shown here comes from role-workflow.json; the native profile selector does not override it.');
   const setup = button('Connect automations', () => connect('setup'));
   const probe = button('Check connection', () => connect('probe'));
   const connectionActions = el('div', 'osb-run-controls'); connectionActions.append(setup, probe);
@@ -80,11 +83,17 @@ export function mountRoleActions({ host, container, navigate, workspace, require
   const submit = el('button', 'osb-button osb-primary'); submit.type = 'submit';
   form.append(skillLabel, changeLabel, specPreview, promptLabel, help, submit);
   const result = el('div', 'osb-run-result'); result.setAttribute('role', 'status'); result.setAttribute('aria-live', 'polite');
-  body.append(form, connectionText, target, connectionActions, setupHelp, result);
+  body.append(form, connectionText, target, launchHelp, connectionActions, setupHelp, result);
   panel.append(body); container.append(panel);
 
   function update() {
     const stage = skill.value;
+    if (connection) {
+      const config = connection.configuration;
+      target.textContent = `${connection.ready ? 'Effective settings' : 'Configured settings · reconnect required'}\n` +
+        `Role: ${role.id} · Skill: ${SKILL_NAMES[stage]}\nAgent profile: ${config.profile} · Timeout: ${config.timeout_seconds} seconds\n` +
+        `Code project: ${config.workspace}\nSpec store: ${config.spec_store}\nSkill source: ${config.skill_root}`;
+    }
     const matches = connection?.configuration?.spec_store === workspace;
     submit.disabled = !supportedTarget || busy || !connection?.ready || !matches || Boolean(last) || (stage !== 'propose' && !specId);
     skill.disabled = change.disabled = prompt.disabled = !supportedTarget || dispatching;
@@ -94,7 +103,7 @@ export function mountRoleActions({ host, container, navigate, workspace, require
     changeLabel.hidden = stage !== 'propose'; change.required = stage === 'propose';
     specPreview.hidden = stage !== 'propose'; specPreview.textContent = `New spec: ${prefix}${change.value.trim() || '<feature>'}`;
     prompt.required = stage !== 'apply'; promptTitle.textContent = stage === 'apply' ? 'Prompt (optional)' : 'Prompt';
-    help.textContent = !supportsSpecs ? 'This store uses the legacy requirement format. Migrate it to role specs before running automations.'
+    help.textContent = !supportsSpecs ? 'Load a store with canonical role change folders before running automations.'
       : !supportedTarget ? 'The selected spec is missing or does not belong to this role. Choose a current Role spec before running a skill.'
       : stage !== 'propose' && !specId ? 'Choose an existing Role spec for Update or Apply, or select Propose to add a new spec.' : HELP[stage];
     submit.textContent = `Run ${role.id} ${SKILLS[stage]}`;
@@ -115,6 +124,26 @@ export function mountRoleActions({ host, container, navigate, workspace, require
     another.disabled = busy; result.append(another);
     result.append(el('small', 'osb-request-ref', `Request ${last.request_id}`));
     result.append(el('p', 'osb-muted', 'Choose Start another run to enable a new submission. Changing Skill does not start work.'));
+    if (lastStatus) {
+      const report = lastStatus.report, outcome = report?.outcome;
+      const labels = { completed: 'Completed', blocked: outcome?.blocker_type === 'dependency' ? 'Waiting for dependency' : 'Blocked · action needed',
+        needs_review: 'Needs review', execution_error: 'Execution error' };
+      result.prepend(el('p', 'osb-run-status', outcome ? `Result: ${labels[outcome.status]}` : `Status: ${lastStatus.status.toLowerCase()}`));
+      if (outcome) {
+        result.append(el('small', 'osb-muted', `Native run: ${lastStatus.status.toLowerCase()} · ${report.role} · ${SKILLS[report.stage]} · ${report.spec_id || 'No spec selected'}`));
+        result.append(el('p', 'osb-outcome-summary', outcome.summary));
+        if (outcome.agent_status) result.append(el('small', 'osb-muted', `Agent reported: ${outcome.agent_status}`));
+        for (const finding of outcome.findings) result.append(el('p', 'osb-run-finding', finding));
+        for (const issue of outcome.audit_errors) result.append(el('p', 'osb-run-error', `Audit: ${issue}`));
+        result.append(el('p', 'osb-next-action', `Next: ${outcome.next_action}`));
+        result.append(el('small', 'osb-automation-target', `Run profile: ${report.configuration.profile} · Timeout: ${report.configuration.timeout_seconds} seconds\nCode project: ${report.configuration.workspace}\nSpec store: ${report.configuration.spec_store}`));
+      } else if (['COMPLETED', 'FAILED'].includes(lastStatus.status)) {
+        result.append(el('p', 'osb-muted', 'Detailed outcome is unavailable for this run. Open native history or its conversation for the reason.'));
+      }
+      if (lastStatus.error) result.append(el('p', 'osb-run-error', lastStatus.error));
+      if (lastStatus.conversation_id) result.append(link('Open conversation →', `/conversations/${lastStatus.conversation_id}`));
+      if (lastStatus.status === 'COMPLETED') result.append(el('p', 'osb-muted', 'Refresh the requirement to read any source changes.'));
+    }
   }
   async function connect(action) {
     if (busy || disposed) return;
@@ -127,9 +156,8 @@ export function mountRoleActions({ host, container, navigate, workspace, require
       const matches = value.configuration.spec_store === workspace;
       connectionText.textContent = !matches ? 'This store is not the configured automation store. Update role-workflow.json and reconnect.'
         : value.ready ? 'Connected · Propose, Update, Apply' : value.message;
-      target.textContent = `Code project: ${value.configuration.workspace}\nSpec store: ${value.configuration.spec_store}`;
     } catch (error) {
-      if (!disposed) { connection = null; connectionText.textContent = error.message || 'Cannot connect to automations.'; }
+      if (!disposed) { connection = null; target.textContent = ''; connectionText.textContent = error.message || 'Cannot connect to automations.'; }
     } finally { busy = false; if (!disposed) update(); }
   }
   async function refreshStatus() {
@@ -138,11 +166,11 @@ export function mountRoleActions({ host, container, navigate, workspace, require
     try {
       const status = await callRoleAutomation(host, 'status', { automation_id: attempt.automation_id, run_id: attempt.run_id });
       if (disposed || last !== attempt) return;
+      if (status.report && (status.report.role !== role.id || status.report.stage !== attempt.stage ||
+          status.report.spec_id !== attempt.spec_id || status.report.requirement_id !== requirement.id ||
+          status.report.configuration.spec_store !== workspace)) throw new Error('Run details do not match this submitted spec. Inspect native history.');
+      lastStatus = status;
       renderLast();
-      result.prepend(el('p', 'osb-run-status', `Status: ${status.status.toLowerCase()}`));
-      if (status.error) result.append(el('p', 'osb-run-error', status.error));
-      if (status.conversation_id) result.append(link('Open conversation →', `/conversations/${status.conversation_id}`));
-      if (status.status === 'COMPLETED') result.append(el('p', 'osb-muted', 'Refresh the requirement to read any source changes.'));
     } catch (error) { if (!disposed) renderLast(error.message || 'Cannot read run status.'); }
     finally {
       busy = false;
@@ -159,7 +187,8 @@ export function mountRoleActions({ host, container, navigate, workspace, require
     try {
       if (skill.value === 'propose' && specs.some(item => item.id === prefix + change.value.trim())) throw new Error('This spec already exists. Choose a new feature name.');
       input = validateRoleInput({ stage: skill.value, spec_store: workspace, requirement_id: requirement.id,
-        context_change: requirement.change, role: role.id, change: requirement.change,
+        context_change: skill.value === 'propose' ? (specId || requirement.specs[0]?.change) : specId, role: role.id,
+        change: skill.value === 'propose' ? prefix + change.value.trim() : specId,
         spec_id: skill.value === 'propose' ? prefix + change.value.trim() : specId,
         request: prompt.value });
     } catch (error) { renderLast(error.message); return; }

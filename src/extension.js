@@ -174,14 +174,14 @@ export function activate(host) {
       content.append(toolbar, caption, results);
       function drawResults() {
         const query = filters.query.trim().toLowerCase();
-        const reqs = snapshot.requirements.filter(r => (!query || `${r.id} ${r.title} ${r.summary} ${r.change} ${(r.specs || []).map(spec => `${spec.id} ${spec.title}`).join(' ')}`.toLowerCase().includes(query)) &&
+        const reqs = snapshot.requirements.filter(r => (!query || `${r.id} ${r.title} ${r.summary} ${(r.specs || []).map(spec => `${spec.id} ${spec.title}`).join(' ')}`.toLowerCase().includes(query)) &&
           (!filters.role || r.roles.some(role => role.id === filters.role && role.state !== 'done')));
         count.textContent = `${reqs.length} of ${snapshot.requirements.length} requirements`;
         results.replaceChildren();
         if (!reqs.length) {
           const empty = el('div', 'osb-empty');
           empty.append(el('h2', '', snapshot.requirements.length ? 'No matching requirements' : 'Your board is ready'),
-            el('p', 'osb-muted', snapshot.requirements.length ? 'Try another search or clear your filters.' : 'Add requirements to openspec/requirements.json, then refresh.'));
+            el('p', 'osb-muted', snapshot.requirements.length ? 'Try another search or clear your filters.' : 'Add a role change under openspec/changes, for example SA-REQ-001-feature, then refresh.'));
           if (snapshot.requirements.length) empty.append(button('Clear filters', 'osb-button', () => { filters.query = ''; filters.role = ''; drawBoard(); }));
           results.append(empty); return;
         }
@@ -237,7 +237,7 @@ export function activate(host) {
         for (const task of tasks) {
           const item = el('li', task.done ? 'completed' : '');
           const mark = el('span', 'osb-check', task.done ? '✓' : '○'); mark.setAttribute('aria-label', task.done ? 'Complete' : 'Remaining');
-          const text = el('div'); text.append(el('span', '', task.description), el('small', '', `${task.specId ? `${task.specId}.md` : 'tasks.md'}:${task.line}`));
+          const text = el('div'); text.append(el('span', '', task.description), el('small', '', `${task.specId ? `${task.specId}/tasks.md` : 'tasks.md'}:${task.line}`));
           item.append(mark, text); list.append(item);
         }
         if (!tasks.length) list.append(el('li', 'osb-warning', emptyMessage));
@@ -284,7 +284,7 @@ export function activate(host) {
       const unassigned = requirement.tasks.filter(t => !t.role);
       if (unassigned.length) { const other = el('section', 'osb-unassigned'); other.append(el('h3', '', 'Unassigned tasks')); for (const task of unassigned) other.append(el('p', '', `${task.done ? '✓' : '○'} ${task.description}`)); content.append(other); }
       const artifactSection = el('section', 'osb-artifacts');
-      const artifactHeader = el('div', 'osb-artifact-heading'); artifactHeader.append(el('h3', '', 'Source artifacts'), el('code', '', `openspec/changes/${requirement.change}`));
+      const artifactHeader = el('div', 'osb-artifact-heading'); const changePath = el('code'); artifactHeader.append(el('h3', '', 'Source artifacts'), changePath);
       const specSelect = el('select', 'osb-spec-select'); specSelect.setAttribute('aria-label', 'Artifact spec');
       for (const target of targets) { const option = el('option', '', target.label); option.value = target.value; specSelect.append(option); }
       specSelect.value = selectedSpec;
@@ -306,13 +306,14 @@ export function activate(host) {
         modeButtons.set(mode, control); modes.append(control);
       }
       const artifactButtons = new Map();
-      const artifacts = () => [...requirement.artifacts, ...(specs.find(spec => spec.id === selectedSpec)?.artifacts || [])];
-      const artifactIds = new Set([...requirement.artifacts, ...specs.flatMap(spec => spec.artifacts)].map(artifact => artifact.id));
+      const artifacts = () => specs.find(spec => spec.id === selectedSpec)?.artifacts || [];
+      const artifactIds = new Set(specs.flatMap(spec => spec.artifacts).map(artifact => artifact.id));
       for (const id of artifactIds) {
         const control = button(ARTIFACTS[id], '', () => { selectedArtifact = id; drawArtifact(); });
         artifactButtons.set(id, control); tabs.append(control);
       }
       function drawArtifact() {
+        changePath.textContent = specs.find(spec => spec.id === selectedSpec)?.change ? `openspec/changes/${selectedSpec}` : 'Choose an existing role change to preview artifacts';
         const available = artifacts();
         const artifact = available.find(a => a.id === selectedArtifact) || available[0];
         body.replaceChildren();
@@ -359,8 +360,8 @@ export function activate(host) {
         snapshot = data; drawMetrics();
         notice.textContent = `${data.description} · Refreshed ${time(data.generatedAt)}`;
         if (route) {
-          const requirement = data.requirements.find(r => route[1] === 'requirements' ? r.id === route[2] : r.change === route[2]);
-          if (requirement) drawDetail(requirement);
+          const requirement = data.requirements.find(r => route[1] === 'requirements' ? r.id === route[2] : r.specs.some(spec => spec.change === route[2]));
+          if (requirement) { if (route[1] === 'changes' && !selectedSpec) selectedSpec = route[2]; drawDetail(requirement); }
           else { clearActions(); content.replaceChildren(el('h2', '', 'Requirement not found'), el('p', 'osb-muted', 'This requirement is not in the selected store.'), link('← Back to board', base, 'osb-button')); }
         } else drawBoard();
       } catch (error) {

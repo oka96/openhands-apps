@@ -31,15 +31,15 @@ const RUN_ID = '05ad810c-bcc0-409b-902d-1bc78023c22b';
 const CONVERSATION_ID = '6f3d24ee-3348-4d84-991d-955359e50a29';
 const SERVICE = { url_from_agent: 'http://127.0.0.1:8001', api_prefix: '/api/automation', auth_env_var: 'OPENHANDS_AUTOMATION_API_KEY' };
 const PREFIXES = { SA: 'SA', Frontend: 'FE', Backend: 'BE', QA: 'QA' };
-const REQUIREMENT = { id: 'REQ-004', title: 'Complete tasks', summary: 'Keep completed tasks visible.', change: 'add-task-completion',
-  specs: ROLES.flatMap(role => ['first', 'second'].map(feature => ({ id: `${PREFIXES[role]}-REQ-004-${feature}`, role, title: feature }))) };
+const REQUIREMENT = { id: 'REQ-004', title: 'Complete tasks', summary: 'Keep completed tasks visible.',
+  specs: ROLES.flatMap(role => ['first', 'second'].map(feature => ({ id: `${PREFIXES[role]}-REQ-004-${feature}`, change: `${PREFIXES[role]}-REQ-004-${feature}`, role, title: feature }))) };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 function output(value) { return { stdout: JSON.stringify(value), stderr: '', exit_code: 0, order: 0 }; }
 function connection(action, options = {}) {
   return { version: 1, kind: action, ready: options.ready ?? true, automations: AUTOMATIONS,
     configuration: { workspace: PROJECT, spec_store: options.store || STORE, store_id: 'openspec-store',
-      repository: '/Users/oka/Desktop/openhands-automation' }, message: 'Connect the role automations.' };
+      repository: '/Users/oka/Desktop/openhands-automation', profile: 'codex-acp-demo', skill_root: PROJECT, timeout_seconds: 1800 }, message: 'Connect the role automations.' };
 }
 function deferred() {
   let resolve, reject;
@@ -88,7 +88,7 @@ function setup(t, options = {}) {
         automation_id: payload.input.automation_id, request_id: payload.input.request_id, run_id: RUN_ID });
       if (payload.action === 'status') return output({ version: 1, kind: 'status',
         automation_id: payload.input.automation_id, run_id: payload.input.run_id,
-        status: 'COMPLETED', error: null, conversation_id: CONVERSATION_ID });
+        status: 'COMPLETED', error: null, conversation_id: CONVERSATION_ID, report: null });
       return output(connection(payload.action, { ready: payload.action === 'setup' || options.ready !== false, store: options.connectionStore }));
     } },
   };
@@ -175,8 +175,8 @@ for (const role of ROLES) for (const stage of STAGES) {
     assert.equal(app.dispatched().length, 1);
     const input = app.dispatched()[0].input;
     assert.deepEqual({ ...input, automation_id: undefined, request_id: undefined }, {
-      stage, spec_store: STORE, requirement_id: REQUIREMENT.id, context_change: REQUIREMENT.change,
-      role, change: REQUIREMENT.change, spec_id: `${PREFIXES[role]}-REQ-004-${stage === 'propose' ? 'add-task-reminders' : 'first'}`, request: prompt,
+      stage, spec_store: STORE, requirement_id: REQUIREMENT.id, context_change: `${PREFIXES[role]}-REQ-004-first`,
+      role, change: `${PREFIXES[role]}-REQ-004-${stage === 'propose' ? 'add-task-reminders' : 'first'}`, spec_id: `${PREFIXES[role]}-REQ-004-${stage === 'propose' ? 'add-task-reminders' : 'first'}`, request: prompt,
       automation_id: undefined, request_id: undefined,
     });
     assert.equal(input.automation_id, AUTOMATIONS.find(item => item.stage === stage && item.role === role).id);
@@ -317,7 +317,7 @@ test('status refresh exposes native run and conversation links without changing 
 test('failed run displays literal error evidence and missing conversation does not create a link', async t => {
   const app = setup(t, { action: payload => payload.action === 'status' ? output({
     version: 1, kind: 'status', automation_id: payload.input.automation_id, run_id: payload.input.run_id,
-    status: 'FAILED', error: '<img src=x onerror=alert(1)> Missing approval.', conversation_id: null,
+    status: 'FAILED', error: '<img src=x onerror=alert(1)> Missing approval.', conversation_id: null, report: null,
   }) : undefined });
   await app.ready(); app.submit(); await eventually(() => app.button('Refresh run status'));
   app.button('Refresh run status').click(); await eventually(() => app.query('.osb-run-status'));
@@ -344,7 +344,7 @@ test('late connection, dispatch and status results cannot recreate a disposed ro
     const value = action === 'probe' ? connection('probe') : action === 'dispatch' ? {
       version: 1, kind: action, automation_id: input.automation_id, request_id: input.request_id, run_id: RUN_ID,
     } : { version: 1, kind: action, automation_id: input.automation_id, run_id: RUN_ID,
-      status: 'COMPLETED', error: null, conversation_id: CONVERSATION_ID };
+      status: 'COMPLETED', error: null, conversation_id: CONVERSATION_ID, report: null };
     pending.resolve(output(value)); await settled(); await settled();
     assert.equal(app.container.childElementCount, 0);
     assert.deepEqual(app.navigation, []);
@@ -369,6 +369,67 @@ test('the bound sibling spec is immutable and prior history never overrides the 
   assert.equal(app.dispatched()[1].input.stage, 'apply');
 });
 
+test('effective configuration follows Skill and explains the supported entry point', async t => {
+  const app = setup(t);
+  await app.ready();
+  assert.match(app.query('.osb-automation-target').textContent, /Effective settings.*Role: SA.*openspec-apply-change.*codex-acp-demo.*1800 seconds/s);
+  assert.match(app.container.textContent, /Native Run now has no requirement context/);
+  assert.match(app.container.textContent, /native profile selector does not override/);
+  app.select('update');
+  assert.match(app.query('.osb-automation-target').textContent, /openspec-update-change/);
+  app.select('propose');
+  assert.match(app.query('.osb-automation-target').textContent, /openspec-propose/);
+  assert.equal(app.dispatched().length, 0);
+});
+
+test('unconnected settings are explicitly marked as requiring reconnect', async t => {
+  const app = setup(t, { ready: false });
+  await app.ready();
+  assert.match(app.query('.osb-automation-target').textContent, /Configured settings · reconnect required/);
+  assert.equal(app.button('Run SA Apply').disabled, true);
+});
+
+test('business outcomes preserve lifecycle, original findings, audit details and historical profile as text', async t => {
+  for (const [kind, label] of [['completed', 'Completed'], ['blocked', 'Waiting for dependency'],
+    ['needs_review', 'Needs review'], ['execution_error', 'Execution error']]) await t.test(kind, async child => {
+    const { repository, ...configuration } = connection('probe').configuration;
+    const outcome = { status: kind, blocker_type: kind === 'blocked' ? 'dependency' : null,
+      summary: '<img src=x onerror=alert(1)> Backend API missing', findings: ['Original blocker'],
+      audit_errors: kind === 'execution_error' ? ['Missing correction reason'] : [],
+      next_action: 'Implement Backend labels first', agent_status: kind === 'execution_error' ? 'blocked' : null };
+    const app = setup(child, { action: payload => payload.action === 'status' ? output({
+      version: 1, kind: 'status', automation_id: payload.input.automation_id, run_id: payload.input.run_id,
+      status: kind === 'completed' ? 'COMPLETED' : 'FAILED', conversation_id: CONVERSATION_ID, error: null,
+      report: { role: 'SA', stage: 'apply', requirement_id: REQUIREMENT.id, spec_id: 'SA-REQ-004-first',
+        configuration: { ...configuration, profile: 'previous-run-profile' }, outcome },
+    }) : undefined });
+    await app.ready(); app.submit(); await eventually(() => app.button('Refresh run status'));
+    app.button('Refresh run status').click(); await eventually(() => app.query('.osb-run-status'));
+    assert.equal(app.query('.osb-run-status').textContent, `Result: ${label}`);
+    assert.match(app.container.textContent, /Native run:.*Original blocker.*Next: Implement Backend labels first.*Run profile: previous-run-profile/s);
+    assert.match(app.query('.osb-automation-target').textContent, /codex-acp-demo/);
+    if (kind === 'execution_error') assert.match(app.container.textContent, /Agent reported: blocked.*Audit: Missing correction reason/s);
+    assert.equal(app.query('img'), null);
+    assert.equal(app.button('Run SA Apply').disabled, true);
+    assert.equal(app.dispatched().length, 1);
+  });
+});
+
+test('foreign spec report is not rendered inside a saved run', async t => {
+  const { repository, ...configuration } = connection('probe').configuration;
+  const app = setup(t, { action: payload => payload.action === 'status' ? output({
+    version: 1, kind: 'status', automation_id: payload.input.automation_id, run_id: payload.input.run_id,
+    status: 'FAILED', conversation_id: CONVERSATION_ID, error: null,
+    report: { role: 'SA', stage: 'apply', requirement_id: REQUIREMENT.id, spec_id: 'SA-REQ-004-second', configuration,
+      outcome: { status: 'blocked', blocker_type: 'dependency', summary: 'Foreign private details', findings: [],
+        audit_errors: [], next_action: 'Foreign next action', agent_status: null } },
+  }) : undefined });
+  await app.ready(); app.submit(); await eventually(() => app.button('Refresh run status'));
+  app.button('Refresh run status').click();
+  await eventually(() => app.container.textContent.includes('do not match this submitted spec'));
+  assert.doesNotMatch(app.container.textContent, /Foreign private/);
+});
+
 test('an earlier run retains its original spec identity when that spec is removed', async t => {
   const app = setup(t);
   await app.ready(); app.submit();
@@ -387,11 +448,11 @@ test('legacy metadata stays read-only and empty roles can explicitly propose a c
     const app = setup(child, { requirement: legacy });
     await app.ready(); app.submit(); await settled();
     assert.equal(app.button('Run SA Apply').disabled, true);
-    assert.match(app.query('.osb-skill-help').textContent, /legacy.*Migrate/);
+    assert.match(app.query('.osb-skill-help').textContent, /canonical role change/);
     assert.equal(app.dispatched().length, 0);
   });
   await t.test('empty role', async child => {
-    const app = setup(child, { role: 'Backend', specId: '', requirement: { ...REQUIREMENT, specs: [] } });
+    const app = setup(child, { role: 'Backend', specId: '', requirement: { ...REQUIREMENT, specs: REQUIREMENT.specs.filter(spec => spec.role !== 'Backend') } });
     await app.ready();
     assert.equal(app.query('[aria-label="Backend skill"]').value, 'propose');
     for (const stage of ['update', 'apply']) {
@@ -406,7 +467,7 @@ test('legacy metadata stays read-only and empty roles can explicitly propose a c
     assert.match(app.container.textContent, /New spec: BE-REQ-004-date-validation/);
     app.submit(); await eventually(() => app.query('a'));
     assert.equal(app.dispatched()[0].input.spec_id, 'BE-REQ-004-date-validation');
-    assert.equal(app.dispatched()[0].input.change, REQUIREMENT.change);
+    assert.equal(app.dispatched()[0].input.change, 'BE-REQ-004-date-validation');
   });
 });
 

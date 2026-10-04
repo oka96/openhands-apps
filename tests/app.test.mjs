@@ -22,7 +22,7 @@ const UNSAFE_ARTIFACT = '# Proposal\n<script>window.artifactExecuted = true</scr
 
 function board(workspace = DEFAULT_STORE) {
   return {
-    version: 1,
+    version: 3,
     kind: 'board',
     workspace,
     name: 'Sample delivery store',
@@ -53,25 +53,21 @@ function board(workspace = DEFAULT_STORE) {
           tasks: roleTasks,
         };
       });
-      return {
-        id: `REQ-00${index + 1}`,
-        title: `Requirement for ${stage}`,
-        summary: `A ${stage} requirement to illustrate the delivery lifecycle.`,
-        change,
-        stage,
-        roles,
-        complete: tasks.filter(task => task.done).length,
-        total: tasks.length,
-        rolesComplete: roles.filter(role => role.state === 'done').length,
-        tasks,
-        warnings: [],
-        artifacts: ['proposal', 'design', 'specs', 'tasks'].map(id => ({
-          id,
-          path: `${root}/${id === 'specs' ? id : `${id}.md`}`,
-          status: 'present',
-          content: id === 'proposal' ? UNSAFE_ARTIFACT : `# ${id}\nSource text for ${change}.`,
-        })),
-      };
+      const specs = roles.map((role, roleIndex) => {
+        const id = `${['SA', 'FE', 'BE', 'QA'][roleIndex]}-REQ-00${index + 1}-${change}`;
+        role.specs = [id];
+        role.tasks.forEach(task => { task.sourcePath = `${workspace}/openspec/changes/${id}/tasks.md`; task.specId = id; });
+        return { id, change: id, title: change, role: role.id, state: role.state, note: role.note,
+          complete: role.complete, total: role.total, tasks: role.tasks, warnings: [],
+          artifacts: ['proposal', 'design', 'specs', 'tasks'].map(kind => ({ id: kind,
+            path: `${workspace}/openspec/changes/${id}/${kind === 'specs' ? kind : `${kind}.md`}`,
+            status: 'present', content: kind === 'proposal' ? UNSAFE_ARTIFACT : `# ${kind}\nSource text for ${change}.` })) };
+      });
+      return { id: `REQ-00${index + 1}`, title: `Requirement for ${stage}`,
+        summary: `A ${stage} requirement to illustrate the delivery lifecycle.`, stage, roles, specs,
+        complete: tasks.filter(task => task.done).length, total: tasks.length,
+        rolesComplete: roles.filter(role => role.state === 'done').length, tasks, warnings: [] };
+
     }),
   };
 }
@@ -174,8 +170,8 @@ test('role specs show independent progress and exact selectable sources across r
   app.change('[aria-label="Frontend skill"]', 'update');
   app.change('[aria-label="Frontend prompt"]', 'Refine filter behavior', 'input');
   const draftForm = app.query('.osb-artifacts form');
-  assert.equal(app.query('.osb-markdown h1').textContent, 'Frontend filters');
-  assert.match(app.query('.osb-artifact-path').textContent, /specs\/FE-REQ-001-filters\/spec.md$/);
+  assert.match(app.query('.osb-markdown').textContent, /Frontend filters/);
+  assert.match(app.query('.osb-artifact-path').textContent, /FE-REQ-001-filters\/specs$/);
   app.button('Tasks').click(); app.button('Source').click();
   assert.equal(app.query('.osb-artifacts form'), draftForm);
   assert.equal(app.query('[aria-label="Frontend prompt"]').value, 'Refine filter behavior');
@@ -193,7 +189,7 @@ test('role specs show independent progress and exact selectable sources across r
   assert.match(app.query('.osb-artifact-source').textContent, /Contract for QA-REQ-001-labels/);
   assert.equal(app.document.activeElement, app.query('[aria-label="Artifact spec"]'));
   app.button('Proposal').click();
-  assert.match(app.query('.osb-artifact-source').textContent, /Shared proposal/);
+  assert.match(app.query('.osb-artifact-source').textContent, /Proposal for QA-REQ-001-labels/);
   assert.equal(app.calls.length, 2, 'Only the explicit store refresh collects the board again');
   assert.ok(app.automationCalls.every(call => call.method === 'GET'), 'Target changes only probe advertised services');
 });
@@ -222,7 +218,8 @@ test('Role spec selects the exact target for the single inline skill form', asyn
       assert.equal(payload.action, 'probe', 'Selection never performs setup or dispatch');
       return output({ version: 1, kind: 'probe', ready: true, automations,
         configuration: { workspace: '/Users/test/project', spec_store: fixture.cwd,
-          store_id: 'openspec-store', repository: '/Users/oka/Desktop/openhands-automation' }, message: '' });
+          store_id: 'openspec-store', repository: '/Users/oka/Desktop/openhands-automation',
+          profile: 'codex-acp-demo', skill_root: '/Users/test/project', timeout_seconds: 1800 }, message: '' });
     },
   });
   await settled(); await settled();
@@ -260,7 +257,7 @@ test('board search matches spec identity and title while counting parent require
   assert.equal(app.calls.length, 1);
 });
 
-test('a role without specs has an explicit incomplete state and retains shared sources', async t => {
+test('a role without specs has an explicit incomplete state and has no invented shared sources', async t => {
   const fixture = await roleSpecsFixture(t);
   await fixture.removeRole('SA');
   const app = setup(t, { path: 'requirements/REQ-001',
@@ -268,18 +265,19 @@ test('a role without specs has an explicit incomplete state and retains shared s
     request: async () => output(await fixture.run()) });
   await settled(); await settled();
   assert.match(app.query('.osb-pipeline').textContent, /No specs yet/);
-  assert.match(app.query('.osb-content').textContent, /SA has no registered specs/);
+  assert.match(app.query('.osb-content').textContent, /SA has no role changes/);
   assert.equal(app.query('.osb-completion strong').textContent, '2 of 4 roles complete');
-  assert.equal(app.query('.osb-markdown h1').textContent, 'Shared proposal');
+  assert.match(app.query('.osb-markdown h1').textContent, /Proposal for FE-REQ-001/);
   app.change('[aria-label="Artifact spec"]', 'new:SA');
   assert.equal(app.query('[aria-label="SA skill"]').value, 'propose');
-  assert.equal(app.query('.osb-markdown h1').textContent, 'Shared proposal');
+  assert.equal(app.query('.osb-markdown'), null);
+  assert.match(app.query('.osb-artifact-message').textContent, /No artifacts/);
   assert.equal(app.button('Specification').hidden, true);
   assert.equal(app.button('Tasks').hidden, true);
   app.change('[aria-label="Artifact spec"]', 'FE-REQ-001-filters');
   assert.equal(app.button('Specification').hidden, false);
   assert.equal(app.button('Tasks').hidden, false);
-  assert.equal(app.query('.osb-markdown h1').textContent, 'Frontend filters');
+  assert.match(app.query('.osb-markdown').textContent, /Frontend filters/);
 });
 
 test('manifest identity registers the native page and all six Kanban lanes', async t => {
@@ -297,12 +295,12 @@ test('manifest identity registers the native page and all six Kanban lanes', asy
   assert.equal(app.all('.osb-card').length, 6);
   assert.equal(app.query('[aria-label="Filter by priority"]'), null);
   assert.equal(app.all('.osb-card-top .osb-badge').length, 0);
-  assert.equal(app.query('.osb-stage-qa .osb-card-foot').textContent, '3/4 roles7/8 tasks');
-  assert.equal(app.query('.osb-stage-done .osb-card-foot').textContent, '4/4 roles8/8 tasks');
+  assert.equal(app.query('.osb-stage-qa .osb-card-foot').textContent, '3/4 roles · 4 specs7/8 tasks');
+  assert.equal(app.query('.osb-stage-done .osb-card-foot').textContent, '4/4 roles · 4 specs8/8 tasks');
   assert.equal(app.query('.osb-stage-blocked .osb-blocker').textContent, '! Waiting for the design decision');
   assert.deepEqual(app.all('.osb-stage-qa .osb-role').map(node => node.getAttribute('aria-label')), [
-    'SA: Complete · 2/2 tasks', 'Frontend: Complete · 2/2 tasks',
-    'Backend: Complete · 2/2 tasks', 'QA: In progress · 1/2 tasks',
+    'SA: Complete · 1 specs · 2/2 tasks', 'Frontend: Complete · 1 specs · 2/2 tasks',
+    'Backend: Complete · 1 specs · 2/2 tasks', 'QA: In progress · 1 specs · 1/2 tasks',
   ]);
   assert.equal(app.query('.osb-metrics').textContent.includes('9 / 24'), true);
   assert.ok(app.query('style[data-openspec-board]').textContent.length > 100);
@@ -371,23 +369,31 @@ test('direct requirement detail displays all roles and read-only task checklists
   assert.equal(app.all('.osb-checklist li').length, 8);
   assert.equal(app.all('.osb-checklist li.completed').length, 7);
   assert.equal(app.all('.osb-checklist input, .osb-checklist button, [contenteditable="true"]').length, 0);
-  assert.equal(app.query('.osb-checklist li small').textContent, 'tasks.md:3');
+  assert.equal(app.query('.osb-checklist li small').textContent, 'SA-REQ-004-sample-qa/tasks.md:3');
   assert.match(app.query('.osb-footer').textContent, /Read-only progress/);
-  assert.equal(app.all('.osb-role-actions').length, 0, 'Legacy stores remain read-only');
+  assert.equal(app.all('.osb-role-actions').length, 1, 'One explicit skill form targets the selected change');
   assert.equal(app.all('.osb-role-panel .osb-role-actions').length, 0);
   assert.equal(app.query('.osb-artifact-actions').nextElementSibling, app.query('.osb-artifact-toolbar'));
-  assert.match(app.query('.osb-artifact-actions').textContent, /Migrate.*role specs/);
+  assert.match(app.query('.osb-artifact-actions').textContent, /Run SA Apply/);
   assert.equal(app.calls.length, 1);
-  assert.equal(app.automationCalls.length, 0, 'Legacy stores do not contact Automation');
+  assert.ok(app.automationCalls.every(call => call.method === 'GET'), 'Read-only connection discovery never dispatches');
   app.query('.osb-breadcrumb a').click();
   assert.deepEqual(app.navigation, [BASE]);
 });
 
-test('legacy change detail routes resolve to the same requirement', async t => {
-  const app = setup(t, { path: 'changes/sample-qa' });
+test('role change deep links select its exact source and role within the requirement', async t => {
+  const app = setup(t, { path: 'changes/FE-REQ-004-sample-qa' });
   await settled();
   assert.equal(app.query('.osb-breadcrumb .osb-id').textContent, 'REQ-004');
   assert.equal(app.query('.osb-detail-heading h2').textContent, 'Requirement for qa');
+  assert.equal(app.query('[aria-label="Artifact spec"]').value, 'FE-REQ-004-sample-qa');
+  assert.match(app.query('.osb-artifact-path').textContent, /FE-REQ-004-sample-qa\/proposal.md$/);
+  assert.ok(app.query('[aria-label="Frontend skill"]'));
+  app.change('[aria-label="Artifact spec"]', 'QA-REQ-004-sample-qa');
+  app.button('Design').click();
+  app.button('Refresh').click(); await settled();
+  assert.equal(app.query('[aria-label="Artifact spec"]').value, 'QA-REQ-004-sample-qa');
+  assert.match(app.query('.osb-artifact-path').textContent, /QA-REQ-004-sample-qa\/design.md$/);
 });
 
 test('detail task text preserves meaningful leading numbers from the collector', async t => {
@@ -432,7 +438,7 @@ test('artifact mode and selected document survive successful and failed refreshe
   const app = setup(t, { path: 'requirements/REQ-002', request: (request, count) => {
     if (count === 3) throw new Error('Store unavailable');
     const data = board();
-    data.requirements[1].artifacts[1].content = `# Design revision ${count}\n\nKeep source exact.\n`;
+    data.requirements[1].specs[0].artifacts[1].content = `# Design revision ${count}\n\nKeep source exact.\n`;
     return output(data);
   } });
   await settled();
@@ -452,8 +458,10 @@ test('artifact mode and selected document survive successful and failed refreshe
 
 test('empty artifacts are explained and task preview cannot change progress', async t => {
   const data = board();
-  data.requirements[1].artifacts[1].content = '';
-  data.requirements[1].artifacts[3].content = '# Tasks\n\n- [x] Ready\n- [ ] Pending\n';
+  data.requirements[1].specs[0].artifacts[1].content = '';
+  data.requirements[1].specs[0].warnings = ['Planning or task content is missing or empty; completion is unverified.'];
+  data.requirements[1].warnings = data.requirements[1].specs[0].warnings.map(w => `${data.requirements[1].specs[0].id}: ${w}`);
+  data.requirements[1].specs[0].artifacts[3].content = '# Tasks\n\n- [x] Ready\n- [ ] Pending\n';
   const app = setup(t, { path: 'requirements/REQ-002', request: () => output(data) });
   await settled();
   app.button('Design').click();
@@ -491,18 +499,18 @@ test('preview rendering failure preserves source access and the requirement deta
 test('missing source artifacts and missing role tasks remain visible as warnings', async t => {
   const data = board();
   const requirement = data.requirements[0];
-  requirement.artifacts[1].status = 'missing';
-  requirement.artifacts[1].content = '';
-  requirement.warnings.push('Missing design artifact.');
+  requirement.specs[0].artifacts[1].status = 'missing';
+  requirement.specs[0].artifacts[1].content = '';
+  requirement.specs[0].warnings = ['Planning or task content is missing or empty; completion is unverified.'];
+  requirement.specs = requirement.specs.filter(spec => spec.role !== 'QA');
   requirement.tasks = requirement.tasks.filter(task => task.role !== 'QA');
   requirement.total = requirement.tasks.length;
-  requirement.roles[3].total = 0;
-  requirement.roles[3].tasks = [];
-  requirement.warnings.push('QA has no tracked tasks; add a task before this role can finish.');
+  Object.assign(requirement.roles[3], { total: 0, tasks: [], specs: [] });
+  requirement.warnings = [...requirement.specs[0].warnings.map(w => `${requirement.specs[0].id}: ${w}`), 'QA has no role changes; completion is unverified.'];
   const app = setup(t, { path: 'requirements/REQ-001', request: () => output(data) });
   await settled();
-  assert.match(app.query('.osb-content').textContent, /QA has no tracked tasks/);
-  assert.match(app.query('.osb-pipeline').textContent, /No tasks assigned to this role/);
+  assert.match(app.query('.osb-content').textContent, /QA has no role changes/);
+  assert.match(app.query('.osb-pipeline').textContent, /No specs yet/);
   assert.equal(app.query('.osb-completion strong').textContent, '0 of 4 roles complete');
   app.button('Design · missing').click();
   assert.equal(app.query('.osb-artifact-message').textContent, 'This artifact has not been created yet.');
@@ -533,7 +541,7 @@ test('an empty store displays onboarding without a misleading filtered-empty act
   const app = setup(t, { request: () => output(data) });
   await settled();
   assert.equal(app.query('.osb-empty h2').textContent, 'Your board is ready');
-  assert.match(app.query('.osb-empty').textContent, /openspec\/requirements.json/);
+  assert.match(app.query('.osb-empty').textContent, /openspec\/changes/);
   assert.equal(app.button('Clear filters'), undefined);
   assert.equal(app.query('.osb-metrics strong').textContent, '00');
 });
@@ -576,6 +584,7 @@ test('refresh reloads role counts and moves a requirement after source progress 
       const requirement = data.requirements[3];
       requirement.tasks.forEach(task => { task.done = true; });
       requirement.roles.forEach(role => { role.state = 'done'; role.complete = role.total; });
+      requirement.specs.forEach(spec => { spec.state = 'done'; spec.complete = spec.total; });
       requirement.stage = 'done';
       requirement.rolesComplete = 4;
       requirement.complete = requirement.total;
@@ -588,7 +597,7 @@ test('refresh reloads role counts and moves a requirement after source progress 
   await settled();
   assert.equal(app.all('.osb-stage-qa .osb-card').length, 0);
   assert.deepEqual(app.all('.osb-stage-done .osb-card .osb-id').map(node => node.textContent), ['REQ-004', 'REQ-006']);
-  assert.equal(app.query('.osb-stage-done .osb-card-foot').textContent, '4/4 roles8/8 tasks');
+  assert.equal(app.query('.osb-stage-done .osb-card-foot').textContent, '4/4 roles · 4 specs8/8 tasks');
 });
 
 test('pending requests disable controls and prevent duplicate refresh or store submissions', async t => {
@@ -698,4 +707,22 @@ test('changing the store from a detail route navigates back before loading the n
   app.mount('');
   await settled();
   assert.equal(app.calls[1].body.cwd, '/tmp/another-store');
+});
+
+test('switching role changes loads all four owned artifact paths without dispatch', async t => {
+  const fixture = await roleSpecsFixture(t);
+  const app = setup(t, { path: 'requirements/REQ-001',
+    storage: { 'openhands.apps.openspec-progress:v3:local-main:store': fixture.cwd },
+    request: async () => output(await fixture.run()) });
+  await settled(); await settled();
+  for (const id of ['SA-REQ-001-labels', 'FE-REQ-001-filters']) {
+    app.change('[aria-label="Artifact spec"]', id);
+    assert.equal(app.query('.osb-artifact-heading code').textContent, `openspec/changes/${id}`);
+    for (const [button, relative] of [['Proposal', 'proposal.md'], ['Design', 'design.md'], ['Specification', 'specs'], ['Tasks', 'tasks.md']]) {
+      app.button(button).click();
+      assert.equal(app.query('.osb-artifact-path').textContent, `${fixture.root}/${id}/${relative}`);
+    }
+  }
+  assert.equal(app.calls.length, 1);
+  assert.ok(app.automationCalls.every(call => call.method === 'GET'));
 });

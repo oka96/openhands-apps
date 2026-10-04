@@ -11,22 +11,23 @@ const output = await build({ entryPoints: [new URL('../src/automation.js', impor
     builder.onResolve({ filter: /automation_bridge\.py\?raw$/ }, args => ({ path: path.resolve(args.resolveDir, 'automation_bridge.py'), namespace: 'raw' }));
     builder.onLoad({ filter: /.*/, namespace: 'raw' }, async args => ({ contents: await readFile(args.path, 'utf8'), loader: 'text' }));
   } }] });
-const { callRoleAutomation, validateRoleInput } = await import(`data:text/javascript;base64,${Buffer.from(output.outputFiles[0].text).toString('base64')}`);
+const { callRoleAutomation, validateRoleInput } = await import(`data:text/javascript;base64,${Buffer.from(output.outputFiles[0].text + '\n//# sourceURL=automation-client.js').toString('base64')}`);
 const execute = promisify(execFile);
 const AUTO = '11dc086b-64d3-4414-bfad-f9a2ef84c503';
 const REQUEST = '9f7c478c-5ad3-438d-a5c5-a4a24c173927';
 const RUN = 'a4e6543c-4c21-4f9b-9a9e-6598d1f544d8';
 const service = { url_from_agent: 'http://127.0.0.1:18021', api_prefix: '/api/automation', auth_env_var: 'OPENHANDS_AUTOMATION_API_KEY' };
 const baseInput = { stage: 'update', spec_store: '/Users/oka/Desktop/openspec-store', requirement_id: 'REQ-001',
-  context_change: 'current-change', role: 'SA', spec_id: 'SA-REQ-001-first', change: 'current-change', request: 'Update 标签; $(never-run)', automation_id: AUTO, request_id: REQUEST };
+  context_change: 'SA-REQ-001-first', role: 'SA', spec_id: 'SA-REQ-001-first', change: 'SA-REQ-001-first', request: 'Update 标签; $(never-run)', automation_id: AUTO, request_id: REQUEST };
 const config = { workspace: '/Users/oka/Desktop/openhands-demo', spec_store: baseInput.spec_store,
-  store_id: 'openspec-store', repository: '/Users/oka/Desktop/openhands-automation' };
+  store_id: 'openspec-store', repository: '/Users/oka/Desktop/openhands-automation',
+  profile: 'codex-acp-demo', skill_root: '/Users/oka/Desktop/openhands-demo', timeout_seconds: 1800 };
 const info = (kind = 'probe', ready = false) => ({ version: 1, kind, ready, configuration: config,
   automations: ready ? ['SA', 'Frontend', 'Backend', 'QA'].flatMap((role, r) => ['propose', 'update', 'apply'].map((stage, index) => ({
     id: AUTO.slice(0, -2) + (r * 3 + index).toString(16).padStart(2, "0"), stage, role, name: `OpenSpec ${role} · ${stage[0].toUpperCase()}${stage.slice(1)}`,
   }))) : [], message: 'Connect automations.' });
 const dispatched = { version: 1, kind: 'dispatch', automation_id: AUTO, request_id: REQUEST, run_id: RUN };
-const status = { version: 1, kind: 'status', automation_id: AUTO, run_id: RUN, status: 'RUNNING', conversation_id: null, error: null };
+const status = { version: 1, kind: 'status', automation_id: AUTO, run_id: RUN, status: 'RUNNING', conversation_id: null, error: null, report: null };
 
 function host(value, overrides = {}) {
   const calls = [];
@@ -41,7 +42,8 @@ function host(value, overrides = {}) {
 
 test('all four roles and three stages accept a single prompt with exact context rules', () => {
   for (const role of ['SA', 'Frontend', 'Backend', 'QA']) for (const stage of ['propose', 'update', 'apply']) {
-    const input = { ...baseInput, role, stage, spec_id: `${{ SA: 'SA', Frontend: 'FE', Backend: 'BE', QA: 'QA' }[role]}-REQ-001-first`, change: 'current-change', request: stage === 'apply' ? '' : baseInput.request };
+    const input = { ...baseInput, role, stage, spec_id: `${{ SA: 'SA', Frontend: 'FE', Backend: 'BE', QA: 'QA' }[role]}-REQ-001-first`, change: 'SA-REQ-001-first', request: stage === 'apply' ? '' : baseInput.request };
+    input.change = input.spec_id; input.context_change = stage === 'propose' ? baseInput.context_change : input.spec_id;
     assert.equal(validateRoleInput(input), input);
     const { automation_id, request_id, ...form } = input;
     assert.equal(validateRoleInput(form), form);

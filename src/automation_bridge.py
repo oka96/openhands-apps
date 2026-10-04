@@ -24,7 +24,7 @@ import uuid
 
 REPOSITORY = Path('/Users/oka/Desktop/openhands-automation')
 SOURCE = 'openspec-role-dashboard'
-SCHEMA = SOURCE + '/v2'
+SCHEMA = SOURCE + '/v3'
 STAGES = ('propose', 'update', 'apply')
 ROLES = ('SA', 'Frontend', 'Backend', 'QA')
 ROLE_PREFIXES = {'SA': 'SA', 'Frontend': 'FE', 'Backend': 'BE', 'QA': 'QA'}
@@ -194,7 +194,7 @@ class Bridge:
             require(directory.is_dir(), 'A configured role workflow directory is missing')
         require(slug(config['store_id']) and isinstance(config['profile'], str) and 0 < len(config['profile']) <= 200
                 and '\x00' not in config['profile'] and type(config['timeout_seconds']) is int
-                and 60 <= config['timeout_seconds'] <= 7200, 'Invalid role workflow store, profile, or timeout')
+                and 60 <= config['timeout_seconds'] <= 1800, 'Invalid role workflow store, profile, or timeout')
         try:
             canvas = urllib.parse.urlsplit(config['canvas_url'])
             canvas.port
@@ -206,7 +206,7 @@ class Bridge:
         return config
 
     def safe_config(self):
-        return {key: self.config[key] for key in ('workspace', 'spec_store', 'store_id')} | {'repository': str(self.repository)}
+        return {key: self.config[key] for key in ('workspace', 'spec_store', 'store_id', 'profile', 'skill_root', 'timeout_seconds')} | {'repository': str(self.repository)}
 
     def inventory(self, endpoint='', key='automations'):
         value = self.api(endpoint + '?limit=100')
@@ -425,61 +425,46 @@ class Bridge:
         require(identifier(data['automation_id']) and identifier(data['request_id']), 'Invalid automation or request ID')
         require(data['stage'] in STAGES and data['role'] in ROLES, 'Unsupported OpenSpec skill or role')
         require(local_path(data['spec_store']) == Path(self.config['spec_store']), 'Selected store does not match the configured role workflow')
-        require(isinstance(data['requirement_id'], str) and re.fullmatch(r'REQ-[0-9]{3,}', data['requirement_id']), 'Invalid requirement ID')
+        require(isinstance(data['requirement_id'], str) and re.fullmatch(r'[A-Z][A-Z0-9]*-[0-9]+', data['requirement_id']), 'Invalid requirement ID')
         prefix = ROLE_PREFIXES[data['role']] + '-' + data['requirement_id'] + '-'
         require(isinstance(data['spec_id'], str) and len(data['spec_id']) <= 160 and data['spec_id'].startswith(prefix)
                 and re.fullmatch(r'[a-z0-9]+(?:-[a-z0-9]+)*', data['spec_id'][len(prefix):]), 'Spec ID must match the requirement and role')
-        require(slug(data['change']) and slug(data['context_change']) and data['change'] == data['context_change'],
-                'Role actions must use the requirement context change')
+        context_match = re.fullmatch(r'(SA|FE|BE|QA)-([A-Z][A-Z0-9]*-[0-9]+)-([a-z0-9]+(?:-[a-z0-9]+)*)', data['context_change']) if isinstance(data['context_change'], str) else None
+        require(context_match and len(data['context_change']) <= 160 and context_match[2] == data['requirement_id']
+                and data['change'] == data['spec_id'] and (data['stage'] == 'propose' or data['context_change'] == data['change']),
+                'Role actions must use canonical changes in the selected requirement')
         require(isinstance(data['request'], str) and len(data['request']) <= 10000 and '\x00' not in data['request']
                 and (data['stage'] == 'apply' or data['request'].strip()), 'Propose and Update require a prompt; maximum 10000 characters')
         if not context:
             return
-        store = Path(self.config['spec_store'])
-        metadata = read_json(store / 'openspec/requirements.json')
-        rows = metadata.get('requirements') if isinstance(metadata, dict) and type(metadata.get('version')) is int and metadata['version'] == 2 else None
-        require(isinstance(rows, list) and 0 < len(rows) <= 50, 'Role actions require store metadata v2')
-        ids, changes, spec_ids = set(), set(), set()
-        for row in rows:
-            require(isinstance(row, dict) and isinstance(row.get('id'), str) and re.fullmatch(r'REQ-[0-9]{3,}', row['id'])
-                    and slug(row.get('change')) and row['id'] not in ids and row['change'] not in changes
-                    and isinstance(row.get('roles'), dict) and set(row['roles']) == set(ROLES), 'Duplicate or invalid store requirements')
-            ids.add(row['id'])
-            changes.add(row['change'])
-            count = 0
-            for role, entry in row['roles'].items():
-                require(isinstance(entry, dict) and set(entry) == {'owner', 'note', 'specs'}
-                        and isinstance(entry['owner'], str) and isinstance(entry['note'], str)
-                        and isinstance(entry['specs'], list), 'Invalid role spec metadata')
-                count += len(entry['specs'])
-                for spec in entry['specs']:
-                    expected = ROLE_PREFIXES[role] + '-' + row['id'] + '-'
-                    require(isinstance(spec, dict) and set(spec) == {'id', 'title', 'state', 'note'}
-                            and isinstance(spec['id'], str) and len(spec['id']) <= 160 and spec['id'].startswith(expected)
-                            and re.fullmatch(r'[a-z0-9]+(?:-[a-z0-9]+)*', spec['id'][len(expected):])
-                            and spec['id'] not in spec_ids and isinstance(spec['title'], str) and 0 < len(spec['title'].strip()) <= 200
-                            and spec['state'] in ('backlog', 'in_progress', 'blocked') and isinstance(spec['note'], str),
-                            'Invalid, duplicate or wrong-role spec metadata')
-                    spec_ids.add(spec['id'])
-            require(count <= 20, 'A requirement may contain at most 20 specs')
-        matches = [row for row in rows if row['id'] == data['requirement_id']]
-        require(len(matches) == 1 and matches[0]['change'] == data['context_change'],
-                'The requirement or context change no longer matches the store')
-        requirement = matches[0]
-        root = store / 'openspec/changes' / data['change']
-        require(root.resolve() == root and root.is_dir(), 'The requirement context change is missing or symlinked')
-        spec_root = root / 'specs' / data['spec_id']
-        task = root / 'tasks' / (data['spec_id'] + '.md')
-        require(spec_root.resolve() == spec_root and task.resolve() == task, 'Spec artifacts must not use symlinks')
-        registered = any(spec['id'] == data['spec_id'] for spec in requirement['roles'][data['role']]['specs'])
+        changes = Path(self.config['spec_store']) / 'openspec/changes'
+        require(changes.resolve() == changes and changes.is_dir(), 'The changes directory is missing or symlinked')
+        entries = list(changes.iterdir())
+        require(len(entries) <= 1000, 'The changes directory exceeded its entry limit')
+        groups = {}
+        for entry in entries:
+            if entry.name == 'archive':
+                continue
+            require(not entry.is_symlink(), 'Symlinked change paths are not supported')
+            match = re.fullmatch(r'(SA|FE|BE|QA)-([A-Z][A-Z0-9]*-[0-9]+)-([a-z0-9]+(?:-[a-z0-9]+)*)', entry.name)
+            if not match:
+                require(not re.match(r'(SA|FE|BE|QA)-', entry.name, re.IGNORECASE), 'Malformed role change folder')
+                continue
+            require(len(entry.name) <= 160 and entry.is_dir(), 'Invalid role change directory')
+            groups.setdefault(match[2], []).append(entry.name)
+        require(len(groups) <= 50 and all(len(names) <= 20 for names in groups.values()), 'Store role change limits exceeded')
+        members = groups.get(data['requirement_id'], [])
+        require(data['context_change'] in members, 'The requirement context change is missing; refresh the board')
+        root = changes / data['change']
+        require(root.resolve() == root, 'Role change must not use symlinks')
         if data['stage'] == 'propose':
-            require(data['spec_id'] not in spec_ids and not spec_root.exists() and not spec_root.is_symlink()
-                    and not task.exists() and not task.is_symlink(), 'Propose refuses to overwrite an existing spec')
-            require(sum(len(role['specs']) for role in requirement['roles'].values()) < 20, 'The requirement has reached its 20 spec limit')
+            require(not root.exists() and not root.is_symlink(), 'Propose refuses to overwrite an existing change')
+            require(len(members) < 20, 'The requirement has reached its 20 spec limit')
         else:
-            require(registered, 'The requirement, role or spec no longer matches the store; refresh the board')
-            read_bytes(spec_root / 'spec.md', 64 * 1024)
-            read_bytes(task, 64 * 1024)
+            require(data['change'] in members, 'The requirement, role or change no longer matches the store; refresh the board')
+            if data['stage'] == 'apply':
+                read_bytes(root / 'tasks.md', 64 * 1024)
+                require((root / 'specs').resolve() == root / 'specs' and (root / 'specs').is_dir(), 'Apply requires specification artifacts')
 
     def dispatch(self, data):
         self.validate_input(data, context=False)
@@ -511,6 +496,47 @@ class Bridge:
             atomic_json(journal, saved)
             return {'kind': 'dispatch', **{key: saved[key] for key in ('automation_id', 'request_id', 'run_id')}}
 
+    def run_report(self, row, role, stage):
+        """Local runner diagnostics never override native lifecycle or expose raw metadata."""
+        if row['status'] not in ('COMPLETED', 'FAILED'):
+            return None
+        try:
+            report = read_json(self.home / '.openhands/apps/openspec-progress/role-results' / (row['id'] + '.json'), 64 * 1024)
+            require(isinstance(report, dict) and set(report) == {'version', 'run_id', 'conversation_id', 'role', 'stage',
+                    'requirement_id', 'spec_id', 'configuration', 'outcome'} and type(report['version']) is int and report['version'] == 1,
+                    'Invalid role result')
+            require(report['run_id'] == row['id'] and report['conversation_id'] == row.get('conversation_id')
+                    and report['role'] == role and report['stage'] == stage, 'Role result identity mismatch')
+            req, spec = report['requirement_id'], report['spec_id']
+            require((req is None and spec is None and report['conversation_id'] is None) or
+                    (isinstance(req, str) and re.fullmatch(r'[A-Z][A-Z0-9]*-[0-9]+', req) and isinstance(spec, str)
+                     and len(spec) <= 160 and spec.startswith(ROLE_PREFIXES[role] + '-' + req + '-')
+                     and re.fullmatch(r'[a-z0-9]+(?:-[a-z0-9]+)*', spec[len(ROLE_PREFIXES[role] + '-' + req + '-'):])),
+                    'Invalid role result target')
+            config = report['configuration']
+            require(isinstance(config, dict) and set(config) == {'workspace', 'spec_store', 'store_id', 'profile', 'skill_root', 'timeout_seconds'}
+                    and all(config[key] == self.config[key] for key in ('workspace', 'spec_store', 'store_id'))
+                    and isinstance(config['profile'], str) and 0 < len(config['profile']) <= 200 and '\x00' not in config['profile']
+                    and type(config['timeout_seconds']) is int and 60 <= config['timeout_seconds'] <= 1800,
+                    'Invalid role result configuration')
+            local_path(config['skill_root'])
+            outcome = report['outcome']
+            require(isinstance(outcome, dict) and set(outcome) == {'status', 'blocker_type', 'summary', 'findings', 'audit_errors', 'next_action', 'agent_status'}
+                    and outcome['status'] in ('completed', 'blocked', 'needs_review', 'execution_error')
+                    and outcome['blocker_type'] in (None, 'dependency', 'input')
+                    and (outcome['status'] == 'blocked' or outcome['blocker_type'] is None)
+                    and outcome['agent_status'] in (None, 'completed', 'blocked', 'findings'), 'Invalid role outcome')
+            for key, limit in (('summary', 2000), ('next_action', 1000)):
+                require(isinstance(outcome[key], str) and 0 < len(outcome[key]) <= limit and '\x00' not in outcome[key], 'Invalid role outcome text')
+            for key in ('findings', 'audit_errors'):
+                require(isinstance(outcome[key], list) and len(outcome[key]) <= 8 and all(
+                    isinstance(value, str) and len(value) <= 1000 and '\x00' not in value for value in outcome[key]), 'Invalid role outcome details')
+            require((row['status'] == 'COMPLETED') == (outcome['status'] == 'completed'), 'Conflicting role result lifecycle')
+            # Only fields validated above may cross the server/browser boundary.
+            return {key: report[key] for key in ('role', 'stage', 'requirement_id', 'spec_id', 'configuration', 'outcome')}
+        except (BridgeError, OSError, ValueError, TypeError, KeyError):
+            return None
+
     def status(self, data):
         require(isinstance(data, dict) and set(data) == {'automation_id', 'run_id'} and all(identifier(value) for value in data.values()), 'Invalid role run status request')
         rows = self.selected(self.inventory())
@@ -529,7 +555,10 @@ class Bridge:
                 # Service errors may contain environment or model details. Keep those in
                 # native history; display only an actionable, fixed summary in Canvas.
                 error = 'This run needs attention. Open native Automation history for details.' if row.get('error_detail') or row['status'] == 'FAILED' else None
-                return {'kind': 'status', **data, 'status': row['status'], 'conversation_id': row.get('conversation_id'), 'error': error}
+                pair = next(pair for pair in PAIRS if rows.get(pair_key(*pair), {}).get('id') == data['automation_id'])
+                report = self.run_report(row, *pair)
+                return {'kind': 'status', **data, 'status': row['status'], 'conversation_id': row.get('conversation_id'),
+                        'error': None if report else error, 'report': report}
             if offset + len(page['runs']) >= page['total']:
                 break
             require(len(page['runs']) == 100, 'Incomplete native Automation history')

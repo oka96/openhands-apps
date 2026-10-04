@@ -36,41 +36,38 @@ function validateTask(task, tasksPath, specId) {
 }
 
 function validateRequirementWithSpecs(item, workspace) {
-  check(fields(item, ['id', 'title', 'summary', 'change', 'stage', 'roles', 'complete', 'total', 'rolesComplete', 'tasks', 'warnings', 'artifacts', 'specs'])
-    && text(item.id, 64) && /^REQ-[0-9]{3,}$/.test(item.id) && text(item.title, 200) && text(item.summary, 4000, true)
-    && text(item.change, 100) && SLUG.test(item.change) && Array.isArray(item.specs) && item.specs.length <= 20
+  check(fields(item, ['id', 'title', 'summary', 'stage', 'roles', 'complete', 'total', 'rolesComplete', 'tasks', 'warnings', 'specs'])
+    && text(item.id, 160) && /^[A-Z][A-Z0-9]*-[0-9]+$/.test(item.id) && text(item.title, 200) && text(item.summary, 4000, true)
+    && Array.isArray(item.specs) && item.specs.length <= 20
     && Array.isArray(item.roles) && item.roles.length === 4 && Array.isArray(item.tasks)
     && count(item.total) && count(item.complete) && item.complete <= item.total && item.tasks.length === item.total
-    && Array.isArray(item.warnings) && item.warnings.length <= 100 && item.warnings.every(warning => text(warning, 4000))
-    && unique(item.warnings) && Array.isArray(item.artifacts) && item.artifacts.length === 2);
-  const root = `${workspace === '/' ? '' : workspace}/openspec/changes/${item.change}`;
+    && Array.isArray(item.warnings) && item.warnings.length <= 11000 && item.warnings.every(warning => text(warning, 4000))
+    && unique(item.warnings));
   function validateArtifact(artifact, id, sourcePath, warnings) {
     check(fields(artifact, ['id', 'path', 'status', 'content']) && artifact.id === id && artifact.path === sourcePath
-      && ['present', 'missing'].includes(artifact.status) && text(artifact.content, 64 * 1024, true)
-      && encoder.encode(artifact.content).length <= 64 * 1024
+      && ['present', 'missing'].includes(artifact.status) && text(artifact.content, (id === 'specs' ? 128 : 64) * 1024, true)
+      && encoder.encode(artifact.content).length <= (id === 'specs' ? 128 : 64) * 1024
       && (artifact.status !== 'missing' || (artifact.content === '' && warnings.length > 0)));
   }
-  item.artifacts.forEach((artifact, index) => {
-    const id = ['proposal', 'design'][index]; validateArtifact(artifact, id, `${root}/${id}.md`, item.warnings);
-  });
   check(unique(item.specs.map(spec => spec.id)));
   for (const spec of item.specs) {
-    check(fields(spec, ['id', 'title', 'role', 'state', 'note', 'complete', 'total', 'tasks', 'artifacts', 'warnings'])
-      && text(spec.id, 160) && text(spec.title, 200) && ROLES.includes(spec.role)
+    check(fields(spec, ['id', 'change', 'title', 'role', 'state', 'note', 'complete', 'total', 'tasks', 'artifacts', 'warnings'])
+      && text(spec.id, 160) && spec.change === spec.id && text(spec.title, 200) && ROLES.includes(spec.role)
       && spec.id.startsWith(`${PREFIXES[spec.role]}-${item.id}-`) && SLUG.test(spec.id.slice(`${PREFIXES[spec.role]}-${item.id}-`.length))
       && ['backlog', 'in_progress', 'blocked', 'done'].includes(spec.state) && text(spec.note, 4000, true)
       && count(spec.total) && count(spec.complete) && spec.complete <= spec.total && Array.isArray(spec.tasks) && spec.tasks.length === spec.total
-      && Array.isArray(spec.artifacts) && spec.artifacts.length === 2 && Array.isArray(spec.warnings) && spec.warnings.length <= 10
+      && Array.isArray(spec.artifacts) && spec.artifacts.length === 4 && Array.isArray(spec.warnings) && spec.warnings.length <= 510
       && spec.warnings.every(warning => text(warning, 4000)) && unique(spec.warnings));
-    validateArtifact(spec.artifacts[0], 'specs', `${root}/specs/${spec.id}/spec.md`, spec.warnings);
-    validateArtifact(spec.artifacts[1], 'tasks', `${root}/tasks/${spec.id}.md`, spec.warnings);
-    spec.tasks.forEach(task => { validateTask(task, spec.artifacts[1].path, spec.id); check(task.role === spec.role); });
+    const root = `${workspace === '/' ? '' : workspace}/openspec/changes/${spec.change}`;
+    ['proposal', 'design', 'specs', 'tasks'].forEach((id, index) => validateArtifact(spec.artifacts[index], id,
+      `${root}/${id === 'specs' ? 'specs' : `${id}.md`}`, spec.warnings));
+    spec.tasks.forEach(task => { validateTask(task, spec.artifacts[3].path, spec.id); check(task.role === spec.role); });
     check(unique(spec.tasks.map(task => task.id)) && unique(spec.tasks.map(task => task.line))
-      && spec.complete === spec.tasks.filter(task => task.done).length && (spec.artifacts[1].status === 'present' || spec.total === 0));
-    const completed = spec.total > 0 && spec.complete === spec.total && spec.artifacts[0].content.trim().length > 0;
+      && spec.complete === spec.tasks.filter(task => task.done).length && (spec.artifacts[3].status === 'present' || spec.total === 0));
+    const completed = spec.total > 0 && spec.complete === spec.total && spec.artifacts.every(a => a.status === 'present' && a.content.trim()) && !spec.warnings.length;
     check((spec.state === 'done') === completed && (spec.complete === 0 || spec.state !== 'backlog'));
     if (!spec.total) check(spec.warnings.includes('No tracked tasks; completion is unverified.'));
-    if (!spec.artifacts[0].content.trim()) check(spec.warnings.includes('Specification content is missing or empty; completion is unverified.'));
+    if (spec.artifacts.some(a => !a.content.trim())) check(spec.warnings.includes('Planning or task content is missing or empty; completion is unverified.'));
     check(spec.warnings.every(warning => item.warnings.includes(`${spec.id}: ${warning}`)));
   }
   function compareTasks(actual, expected) {
@@ -84,7 +81,7 @@ function validateRequirementWithSpecs(item, workspace) {
   check(item.complete === item.tasks.filter(task => task.done).length);
   item.roles.forEach((role, index) => {
     check(fields(role, ['id', 'label', 'owner', 'state', 'note', 'complete', 'total', 'tasks', 'specs'])
-      && role.id === ROLES[index] && role.label === LABELS[index] && text(role.owner, 200) && text(role.note, 4000, true)
+      && role.id === ROLES[index] && role.label === LABELS[index] && text(role.owner, 4000) && text(role.note, 80000, true)
       && Array.isArray(role.specs));
     const specs = item.specs.filter(spec => spec.role === role.id);
     check(JSON.stringify(role.specs) === JSON.stringify(specs.map(spec => spec.id)));
@@ -94,7 +91,7 @@ function validateRequirementWithSpecs(item, workspace) {
       : specs.some(spec => spec.state === 'blocked') ? 'blocked'
         : specs.some(spec => ['done', 'in_progress'].includes(spec.state)) ? 'in_progress' : 'backlog';
     check(role.state === state);
-    if (!specs.length) check(item.warnings.includes(`${role.id} has no registered specs; completion is unverified.`));
+    if (!specs.length) check(item.warnings.includes(`${role.id} has no role changes; completion is unverified.`));
   });
   check(item.rolesComplete === item.roles.filter(role => role.state === 'done').length);
   const states = item.roles.map(role => role.state);
@@ -104,74 +101,19 @@ function validateRequirementWithSpecs(item, workspace) {
   check(item.stage === stage);
 }
 
-function validateRequirement(item, workspace) {
-  check(fields(item, ['id', 'title', 'summary', 'change', 'stage', 'roles', 'complete', 'total', 'rolesComplete', 'tasks', 'warnings', 'artifacts'])
-    && text(item.id, 64) && /^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*$/.test(item.id) && text(item.title, 200)
-    && text(item.summary, 4000, true) && text(item.change, 100) && SLUG.test(item.change)
-    && Array.isArray(item.roles) && item.roles.length === 4
-    && count(item.total) && count(item.complete) && item.complete <= item.total
-    && Number.isInteger(item.rolesComplete) && item.rolesComplete >= 0 && item.rolesComplete <= 4
-    && Array.isArray(item.tasks) && item.tasks.length === item.total && Array.isArray(item.warnings)
-    && item.warnings.length <= 100 && item.warnings.every(warning => text(warning, 4000))
-    && unique(item.warnings) && Array.isArray(item.artifacts) && item.artifacts.length === 4);
-  const root = `${workspace === '/' ? '' : workspace}/openspec/changes/${item.change}`;
-  const tasksPath = `${root}/tasks.md`;
-  item.tasks.forEach(task => validateTask(task, tasksPath));
-  check(unique(item.tasks.map(task => task.id)) && unique(item.tasks.map(task => task.line))
-    && item.tasks.filter(task => task.done).length === item.complete);
-  const artifactIds = ['proposal', 'design', 'specs', 'tasks'];
-  item.artifacts.forEach((artifact, index) => {
-    const id = artifactIds[index];
-    check(fields(artifact, ['id', 'path', 'status', 'content']) && artifact.id === id
-      && artifact.path === `${root}/${id === 'specs' ? 'specs' : `${id}.md`}`
-      && ['present', 'missing'].includes(artifact.status) && text(artifact.content, 128 * 1024, true)
-      && encoder.encode(artifact.content).length <= (id === 'specs' ? 128 * 1024 : 64 * 1024)
-      && (artifact.status !== 'missing' || artifact.content === ''));
-    if (artifact.status === 'missing') check(item.warnings.length > 0);
-  });
-  check(item.artifacts[3].status === 'present' || item.total === 0);
-  item.roles.forEach((role, index) => {
-    check(fields(role, ['id', 'label', 'owner', 'state', 'note', 'complete', 'total', 'tasks']) && role.id === ROLES[index]
-      && role.label === LABELS[index] && text(role.owner, 200) && text(role.note, 4000, true)
-      && ['backlog', 'in_progress', 'blocked', 'done'].includes(role.state) && count(role.complete) && count(role.total)
-      && role.complete <= role.total && Array.isArray(role.tasks));
-    const expected = item.tasks.filter(task => task.role === role.id);
-    check(role.total === expected.length && role.complete === expected.filter(task => task.done).length
-      && role.tasks.length === expected.length);
-    role.tasks.forEach((task, taskIndex) => {
-      validateTask(task, tasksPath);
-      check(sameTask(task, expected[taskIndex]));
-    });
-    check((role.state === 'done') === (role.total > 0 && role.complete === role.total));
-    check(role.complete === 0 || role.state !== 'backlog');
-    if (!role.total) check(item.warnings.some(warning => warning.startsWith(`${role.id} has no tracked tasks;`)));
-  });
-  const unassigned = item.tasks.filter(task => task.role === null);
-  if (unassigned.length) check(item.warnings.some(warning => warning.includes('without a recognized role')));
-  check(item.rolesComplete === item.roles.filter(role => role.state === 'done').length);
-  const states = item.roles.map(role => role.state);
-  const stage = states.includes('blocked') ? 'blocked'
-    : item.rolesComplete === 4 && unassigned.every(task => task.done) ? 'done'
-      : states.every(state => state === 'backlog') ? 'backlog'
-        : states[0] !== 'done' ? 'sa'
-          : states[1] !== 'done' || states[2] !== 'done' ? 'implementation'
-            : states[3] !== 'done' ? 'qa' : 'implementation';
-  check(item.stage === stage);
-}
-
 export function validateBoard(data, workspace, now = Date.now()) {
   const cwd = validateWorkspace(workspace);
   check(fields(data, ['version', 'kind', 'workspace', 'name', 'description', 'generatedAt', 'requirements'])
-    && [1, 2].includes(data.version) && data.kind === 'board' && data.workspace === cwd && text(data.name, 200)
+    && data.version === 3 && data.kind === 'board' && data.workspace === cwd && text(data.name, 200)
     && text(data.description, 4000, true) && typeof data.generatedAt === 'string'
     && Number.isFinite(Date.parse(data.generatedAt)) && new Date(data.generatedAt).toISOString() === data.generatedAt
     && Array.isArray(data.requirements) && data.requirements.length <= 50);
   const age = now - Date.parse(data.generatedAt);
   check(age >= -60_000 && age <= 300_000, 'The store returned an old snapshot or its server clock differs. Refresh and check the Agent Server clock.');
   check(encoder.encode(JSON.stringify(data)).length <= LIMIT, 'Store data exceeded the 512 KiB output limit.');
-  data.requirements.forEach(item => data.version === 2 ? validateRequirementWithSpecs(item, cwd) : validateRequirement(item, cwd));
-  check(unique(data.requirements.map(item => item.id)) && unique(data.requirements.map(item => item.change)));
-  if (data.version === 2) check(unique(data.requirements.flatMap(item => item.specs.map(spec => spec.id))));
+  data.requirements.forEach(item => validateRequirementWithSpecs(item, cwd));
+  check(unique(data.requirements.map(item => item.id)));
+  check(unique(data.requirements.flatMap(item => item.specs.map(spec => spec.id))));
   return data;
 }
 

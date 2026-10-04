@@ -5,228 +5,163 @@ import os from 'node:os';
 import path from 'node:path';
 import { collect } from '../src/collector.cjs';
 
-const ROLES = ['SA', 'Frontend', 'Backend', 'QA'];
-function metadata(overrides = {}) {
-  return { version: 1, name: '团队 Store 🛍️', description: 'Role-based requirements', requirements: [{
-    id: 'REQ-001', title: 'Accessible checkout', summary: 'Payment review', change: 'accessible-checkout',
-    roles: Object.fromEntries(ROLES.map(role => [role, { owner: `${role} owner`, state: 'backlog', note: '' }])),
-    ...overrides,
-  }] };
-}
-function taskText(done = [], extra = '') {
-  return '# Tasks\n\n' + ROLES.map((role, index) => `- [${done.includes(role) ? 'x' : ' '}] ${index + 1}.1 [${role}] Complete ${role} work`).join('\n') + extra;
-}
-async function fixture(t, data = metadata(), tasks = taskText()) {
-  const temporary = await mkdtemp(path.join(os.tmpdir(), 'store-collector-'));
-  const cwd = await realpath(temporary);
+const ROLES = ['SA', 'Frontend', 'Backend', 'QA'], PREFIXES = ['SA', 'FE', 'BE', 'QA'];
+async function fixture(t, done = [], hints = {}) {
+  const cwd = await realpath(await mkdtemp(path.join(os.tmpdir(), 'store-collector-')));
   t.after(() => rm(cwd, { recursive: true, force: true }));
-  const change = path.join(cwd, 'openspec', 'changes', 'accessible-checkout');
-  await mkdir(path.join(change, 'specs', 'checkout'), { recursive: true });
-  await writeFile(path.join(cwd, 'openspec', 'requirements.json'), JSON.stringify(data));
-  for (const name of ['proposal', 'design']) await writeFile(path.join(change, `${name}.md`), `# ${name}\n\nSource content.`);
-  await writeFile(path.join(change, 'specs', 'checkout', 'spec.md'), '# Requirements\n\n### Requirement: Accessible checkout\n');
-  await writeFile(path.join(change, 'tasks.md'), tasks);
-  return { cwd, change, run: () => collect({ action: 'board' }, { cwd }) };
+  const changes = path.join(cwd, 'openspec', 'changes'), roots = {};
+  for (const [index, role] of ROLES.entries()) {
+    const directory = roots[role] = path.join(changes, `${PREFIXES[index]}-REQ-001-checkout`);
+    await mkdir(path.join(directory, 'specs', 'checkout'), { recursive: true });
+    await writeFile(path.join(directory, 'proposal.md'), `# Proposal\n\n## Kanban\n- Requirement title: Accessible checkout\n- Requirement summary: Payment review\n- Owner: ${role} owner\n- State: ${hints[role] || 'backlog'}\n- Note: Waiting for test environment\n`);
+    await writeFile(path.join(directory, 'design.md'), '# Design\n\nSource content.');
+    await writeFile(path.join(directory, 'specs/checkout/spec.md'), '# Requirements\n\n### Requirement: Accessible checkout\n');
+    await writeFile(path.join(directory, 'tasks.md'), `# Tasks\n\n- [${done.includes(role) ? 'x' : ' '}] 1.1 Complete ${role} work\n`);
+  }
+  return { cwd, changes, roots, change: roots.SA, run: () => collect({ action: 'board' }, { cwd }) };
 }
 
-test('all four role checklists gate progress through backlog, SA, implementation, QA, and done', async t => {
-  for (const [done, hint, expected] of [
-    [[], null, 'backlog'], [[], 'SA', 'sa'], [['SA'], null, 'implementation'],
-    [['SA', 'Frontend'], null, 'implementation'], [['SA', 'Backend'], null, 'implementation'],
-    [['SA', 'Frontend', 'Backend'], null, 'qa'], [ROLES, null, 'done'],
-  ]) {
-    const data = metadata();
-    if (hint) data.requirements[0].roles[hint].state = 'in_progress';
-    const { run } = await fixture(t, data, taskText(done));
-    const board = await run();
-    assert.equal(board.kind, 'board');
-    const item = board.requirements[0];
-    assert.equal(Object.hasOwn(item, 'priority'), false);
-    assert.equal(item.stage, expected);
-    assert.equal(item.complete, done.length);
-    assert.equal(item.rolesComplete, done.length);
-    assert.equal(item.total, 4);
+test('four folder-owned checklists gate backlog, design, implementation, QA, and done without a registry', async t => {
+  for (const [done, hints, expected] of [[[], {}, 'backlog'], [[], { SA: 'in_progress' }, 'sa'], [['SA'], {}, 'implementation'],
+    [['SA', 'Frontend'], {}, 'implementation'], [['SA', 'Backend'], {}, 'implementation'], [['SA', 'Frontend', 'Backend'], {}, 'qa'], [ROLES, {}, 'done']]) {
+    const { run } = await fixture(t, done, hints), board = await run(), item = board.requirements[0];
+    assert.equal(board.version, 3); assert.equal(item.stage, expected);
+    assert.deepEqual([item.complete, item.total, item.rolesComplete], [done.length, 4, done.length]);
     assert.deepEqual(item.roles.map(role => role.id), ROLES);
-    assert.deepEqual(item.roles.map(role => role.state), ROLES.map(role => done.includes(role) ? 'done' : hint === role ? 'in_progress' : 'backlog'));
-    assert.equal(item.warnings.length, 0);
+    assert.equal(item.warnings.length, 0); assert.equal(Object.hasOwn(item, 'change'), false); assert.equal(Object.hasOwn(item, 'artifacts'), false);
+    assert.ok(item.specs.every(spec => spec.change === spec.id && spec.artifacts.length === 4));
   }
 });
 
-test('unfinished blocked roles override every phase; completion clears an old blocked hint', async t => {
-  const data = metadata();
-  data.requirements[0].roles.QA.state = 'blocked';
-  data.requirements[0].roles.QA.note = 'Waiting for test environment';
-  const first = await fixture(t, data, taskText(['SA']));
-  const item = (await first.run()).requirements[0];
-  assert.equal(item.stage, 'blocked');
-  assert.equal(item.roles[3].note, 'Waiting for test environment');
-  const second = await fixture(t, data, taskText(ROLES));
-  assert.equal((await second.run()).requirements[0].stage, 'done');
-});
-
-test('partial role completion infers in progress but preserves blocked metadata', async t => {
-  for (const [hint, expected] of [['backlog', 'in_progress'], ['blocked', 'blocked']]) {
-    const data = metadata();
-    data.requirements[0].roles.SA.state = hint;
-    const { run } = await fixture(t, data, taskText(['SA'], '\n- [ ] 1.2 [SA] Review design'));
-    const role = (await run()).requirements[0].roles[0];
-    assert.equal(role.state, expected);
-    assert.equal(role.complete, 1);
-    assert.equal(role.total, 2);
-  }
-});
-
-test('missing and empty task files leave all roles unverified and visibly warned', async t => {
-  for (const missing of [true, false]) {
-    const { run, change } = await fixture(t, metadata(), '');
-    if (missing) await rm(path.join(change, 'tasks.md'));
-    const item = (await run()).requirements[0];
-    assert.equal(item.stage, 'backlog');
-    assert.equal(item.rolesComplete, 0);
-    assert.equal(item.total, 0);
-    assert.ok(item.roles.every(role => role.state !== 'done'));
-    for (const role of ROLES) assert.ok(item.warnings.some(warning => warning.includes(`${role} has no tracked tasks`)));
-    assert.equal(item.artifacts[3].status, missing ? 'missing' : 'present');
-  }
-});
-
-test('a missing role prevents completion even when every existing checkbox is checked', async t => {
-  const { run } = await fixture(t, metadata(), taskText(ROLES).split('\n').filter(line => !line.includes('[QA]')).join('\n'));
-  const item = (await run()).requirements[0];
-  assert.equal(item.complete, item.total);
-  assert.equal(item.rolesComplete, 3);
-  assert.equal(item.stage, 'qa');
-  assert.equal(item.roles[3].state, 'backlog');
-});
-
-test('unassigned unfinished checkboxes prevent done, including unknown role names', async t => {
-  const { run } = await fixture(t, metadata(), taskText(ROLES, '\n- [ ] 5.1 [DevOps] Deploy'));
-  const item = (await run()).requirements[0];
-  assert.equal(item.stage, 'implementation');
-  assert.equal(item.total, 5);
-  assert.equal(item.tasks[4].role, null);
-  assert.match(item.warnings.join(' '), /without a recognized role/);
-  const complete = await fixture(t, metadata(), taskText(ROLES, '\n- [x] 5.1 Document result'));
+test('optional blockers and partial checkboxes derive progress; completion clears stale hints', async t => {
+  const first = await fixture(t, ['SA'], { QA: 'blocked' });
+  assert.equal((await first.run()).requirements[0].stage, 'blocked');
+  const complete = await fixture(t, ROLES, { QA: 'blocked' });
   assert.equal((await complete.run()).requirements[0].stage, 'done');
-  const unstarted = await fixture(t, metadata(), taskText([], '\n- [x] 5.1 Miscellaneous note'));
-  assert.equal((await unstarted.run()).requirements[0].stage, 'backlog');
+  await writeFile(path.join(first.change, 'tasks.md'), '- [x] 1.1 First\n- [ ] 1.2 Review design');
+  const role = (await first.run()).requirements[0].roles[0];
+  assert.deepEqual([role.state, role.complete, role.total], ['in_progress', 1, 2]);
 });
 
-test('role prefixes, uppercase checkmarks, source lines, Unicode and untrusted markup remain data', async t => {
-  const source = '# Tasks\n- [X] [SA] 1.1 中文 🧪 <img src=x onerror=alert(1)>\n- [ ] 2.1 [Frontend] Build\n'
-    + '```md\n- [x] 9.9 [QA] Example only\n```\n- [ ] 3.1 [Backend] API\n- [ ] 4.1 [QA] Verify\n';
-  const { run, change } = await fixture(t, metadata(), source);
-  const board = await run();
-  assert.equal(board.name, '团队 Store 🛍️');
-  const item = board.requirements[0];
-  assert.equal(item.total, 5);
-  assert.deepEqual(item.tasks[0], { id: '1.1', description: '中文 🧪 <img src=x onerror=alert(1)>', done: true,
-    line: 2, sourcePath: path.join(change, 'tasks.md'), role: 'SA' });
-  assert.match(item.artifacts[2].content, /openspec\/changes\/accessible-checkout\/specs\/checkout\/spec.md/);
-  assert.equal(item.artifacts[3].content, source);
+test('missing or empty any planning artifact and empty tasks prevent false completion', async t => {
+  for (const filename of ['proposal.md', 'design.md', 'tasks.md', 'specs/checkout/spec.md']) for (const missing of [false, true]) {
+    const fixtureData = await fixture(t, ROLES), filenamePath = path.join(fixtureData.change, filename);
+    if (missing) await rm(filenamePath); else await writeFile(filenamePath, '');
+    const item = (await fixtureData.run()).requirements[0];
+    assert.notEqual(item.roles[0].state, 'done', `${filename} missing=${missing}`);
+    assert.ok(item.warnings.length);
+  }
 });
 
-test('every one-character checkbox marker is tracked; only trimmed x or X counts as done', async t => {
+test('missing role prevents requirement completion even when existing checkboxes are checked', async t => {
+  const data = await fixture(t, ROLES); await rm(data.roots.QA, { recursive: true });
+  const item = (await data.run()).requirements[0];
+  assert.equal(item.complete, item.total); assert.equal(item.rolesComplete, 3); assert.equal(item.stage, 'qa');
+  assert.match(item.warnings.join(' '), /QA has no role changes/);
+});
+
+test('folder names group arbitrary prefixes and preserve zeroes; unrelated changes and archives are excluded', async t => {
+  const data = await fixture(t);
+  for (const name of ['SA-STORY-12-api', 'FE-STORY-12-editor', 'BE-STORY-012-api', 'regular-change', 'archive/SA-REQ-999-archived']) await mkdir(path.join(data.changes, name), { recursive: true });
+  await writeFile(path.join(data.cwd, 'openspec/requirements.json'), '{ malformed and deliberately ignored');
+  const board = await data.run();
+  assert.deepEqual(board.requirements.map(item => item.id), ['REQ-001', 'STORY-012', 'STORY-12']);
+  assert.equal(board.requirements[2].specs.length, 2); assert.equal(board.requirements[2].title, 'STORY-12');
+  assert.equal(board.requirements[2].roles[0].owner, 'Unassigned');
+});
+
+test('Markdown context is optional, multiline values survive, conflicts are deterministic warnings', async t => {
+  const data = await fixture(t);
+  await writeFile(path.join(data.change, 'proposal.md'), '# Proposal\n\n## Kanban\n- Requirement title: Different title\n- Requirement summary: First line\n  Second line\n- Owner: Owner <b>data</b>\n- Role note: first\n  second\n\n## Other\n- State: blocked\n');
+  const item = (await data.run()).requirements[0];
+  assert.equal(item.title, 'Accessible checkout');
+  assert.match(item.warnings.join(' '), /Conflicting Requirement title/);
+  assert.equal(item.roles[0].note, 'first\nsecond'); assert.equal(item.roles[0].owner, 'Owner <b>data</b>');
+  assert.equal(item.roles[0].state, 'backlog');
+  await writeFile(path.join(data.change, 'proposal.md'), '# Plain standard proposal');
+  assert.equal((await data.run()).requirements[0].specs[0].title, 'checkout');
+});
+
+test('explicit task role tags must match folder ownership, while untagged tasks inherit it', async t => {
+  const data = await fixture(t);
+  await writeFile(path.join(data.change, 'tasks.md'), '- [X] [SA] 1.1 中文 🧪 <img src=x>\n- [ ] 1.2 429 responses include Retry-After\n');
+  const tasks = (await data.run()).requirements[0].specs[0].tasks;
+  assert.equal(tasks[0].description, '中文 🧪 <img src=x>'); assert.equal(tasks[1].description, '429 responses include Retry-After');
+  assert.equal(tasks[0].line, 1); assert.equal(tasks[0].role, 'SA');
+  await writeFile(path.join(data.change, 'tasks.md'), '- [ ] 1.1 [QA] Wrong role');
+  assert.match((await data.run()).message, /must belong to SA/);
+});
+
+test('all single checkbox markers, nested and ordered lists, fenced examples and no-space tasks remain tracked', async t => {
+  const data = await fixture(t, ROLES);
   for (const marker of ['-', '~', '', '?', '  ']) {
-    const { run } = await fixture(t, metadata(), taskText(ROLES, `\n- [${marker}] 4.2 [QA] Still unfinished`));
-    const item = (await run()).requirements[0];
-    assert.equal(item.total, 5, `marker [${marker}] must stay tracked`);
-    assert.equal(item.complete, 4);
-    assert.equal(item.stage, 'qa');
-    assert.equal(item.tasks[4].done, false);
+    await writeFile(path.join(data.roots.QA, 'tasks.md'), `- [x] 1.1 Done\n- [${marker}] 1.2 Pending\n`);
+    const item = (await data.run()).requirements[0]; assert.equal(item.total, 5); assert.equal(item.complete, 4); assert.equal(item.stage, 'qa');
   }
-  const { run } = await fixture(t, metadata(), taskText(ROLES, '\n- [ x ] 4.2 [QA] Done\n- [ X] 4.3 [QA] Also done'));
-  assert.equal((await run()).requirements[0].stage, 'done');
-  const invalid = await fixture(t, metadata(), taskText(ROLES, '\n- [ ]'));
-  assert.match((await invalid.run()).message, /empty or oversized description/);
+  await writeFile(path.join(data.roots.QA, 'tasks.md'), '```md\n- [~]1.1 Example\n```\n+ [ ]1.2 No space\n9) [-]1.3 Ordered\n- [Documentation](./guide.md)\n- [A](./guide.md)\n- [1][reference]\n');
+  assert.equal((await data.run()).requirements[0].roles[3].total, 3);
+  await writeFile(path.join(data.change, 'tasks.md'), '- [ ]'); assert.match((await data.run()).message, /empty or oversized description/);
 });
 
-test('OpenSpec list syntax retains fenced and no-space tasks without swallowing link bullets', async t => {
-  const extra = '\n```md\n- [~]4.2 [QA] Still tracked\n```\n+ [ ]4.3 [QA] No space\n9) [-]4.4 [QA] Ordered\n'
-    + '- [Documentation](./guide.md)\n- [A](./guide.md)\n- [1][reference]\n- [WIP] Not a single-token checkbox';
-  const { run } = await fixture(t, metadata(), taskText(ROLES, extra));
-  const item = (await run()).requirements[0];
-  assert.equal(item.total, 7);
-  assert.equal(item.complete, 4);
-  assert.equal(item.stage, 'qa');
+test('multiple and nested capability specs compile with exact paths and bounded depth', async t => {
+  const data = await fixture(t), nested = path.join(data.change, 'specs/checkout/accessibility');
+  await mkdir(nested); await writeFile(path.join(nested, 'spec.md'), '# Keyboard scenarios');
+  const artifact = (await data.run()).requirements[0].specs[0].artifacts[2];
+  assert.match(artifact.content, /specs\/checkout\/accessibility\/spec.md/); assert.match(artifact.content, /Accessible checkout/);
+  const deep = path.join(data.change, 'specs', ...Array.from({ length: 9 }, (_, i) => `depth-${i}`));
+  await mkdir(deep, { recursive: true }); await writeFile(path.join(deep, 'spec.md'), '# Deep');
+  assert.match((await data.run()).message, /depth limit/);
 });
 
-test('nested capability specs are recursively included with source paths and bounded depth', async t => {
-  const { run, change } = await fixture(t);
-  const nested = path.join(change, 'specs', 'checkout', 'accessibility');
-  await mkdir(nested);
-  await writeFile(path.join(nested, 'spec.md'), '# Nested keyboard scenarios');
-  const specs = (await run()).requirements[0].artifacts[2];
-  assert.match(specs.content, /specs\/checkout\/accessibility\/spec.md/);
-  assert.match(specs.content, /Nested keyboard scenarios/);
-  assert.match(specs.content, /Accessible checkout/);
-  const deep = path.join(change, 'specs', ...Array.from({ length: 9 }, (_, index) => `level-${index}`));
-  await mkdir(deep, { recursive: true });
-  await writeFile(path.join(deep, 'spec.md'), '# Too deep');
-  assert.match((await run()).message, /depth limit/);
-});
-
-test('missing planning artifacts are useful per-requirement warnings', async t => {
-  const { run, change } = await fixture(t);
-  await rm(path.join(change, 'proposal.md'));
-  await rm(path.join(change, 'specs'), { recursive: true });
-  const item = (await run()).requirements[0];
-  assert.equal(item.artifacts[0].status, 'missing');
-  assert.equal(item.artifacts[2].status, 'missing');
-  assert.match(item.warnings.join(' '), /Missing proposal artifact/);
-  assert.match(item.warnings.join(' '), /Missing specs artifact/);
-});
-
-test('malformed metadata, removed fields, duplicate requirement/change IDs and duplicate task IDs fail closed', async t => {
-  for (const modify of [
-    data => { data.version = 2; }, data => { data.requirements[0].priority = 'high'; },
-    data => { data.requirements[0].roles.SA.state = 'done'; }, data => { data.requirements[0].roles.Other = {}; },
-    data => { data.requirements.push(structuredClone(data.requirements[0])); },
-    data => { data.requirements.push({ ...structuredClone(data.requirements[0]), id: 'REQ-002' }); },
-    data => { data.requirements[0].roles.SA.owner = 1; },
-  ]) {
-    const data = metadata(); modify(data);
-    const { run } = await fixture(t, data);
-    assert.equal((await run()).kind, 'error');
+test('malformed role identities, invalid Markdown metadata and duplicate local task IDs fail closed', async t => {
+  for (const name of ['SA-REQ-x-feature', 'FE-req-1-feature', 'QA-REQ-1-BAD', `SA-REQ-1-${'a'.repeat(160)}`]) {
+    const data = await fixture(t); await mkdir(path.join(data.changes, name)); assert.equal((await data.run()).kind, 'error');
   }
-  const { run, cwd } = await fixture(t, metadata(), taskText([], '\n- [ ] 1.1 [QA] Duplicate'));
-  assert.match((await run()).message, /Duplicate task IDs/);
-  await writeFile(path.join(cwd, 'openspec', 'requirements.json'), '{ nope');
-  assert.match((await run()).message, /not valid JSON/);
-});
-
-test('path traversal, unsafe actions, symlink escapes, and .local workspaces are rejected', async t => {
-  const traversal = await fixture(t, metadata({ change: '../../.local/private' }));
-  assert.equal((await traversal.run()).kind, 'error');
-  assert.equal((await collect({ action: 'board', command: 'anything' }, { cwd: traversal.cwd })).kind, 'error');
-  assert.equal((await collect({ action: 'write' }, { cwd: traversal.cwd })).kind, 'error');
-  assert.equal((await collect({ action: 'board' }, { cwd: path.join(traversal.cwd, '.local') })).kind, 'error');
-  const outside = await fixture(t);
-  const inside = await fixture(t);
-  await rm(path.join(inside.change, 'tasks.md'));
-  await symlink(path.join(outside.change, 'tasks.md'), path.join(inside.change, 'tasks.md'));
-  assert.match((await inside.run()).message, /Symlinked or escaping/);
-  const specLink = await fixture(t);
-  await rm(path.join(specLink.change, 'specs', 'checkout'), { recursive: true });
-  await symlink(path.join(outside.change, 'specs', 'checkout'), path.join(specLink.change, 'specs', 'checkout'));
-  assert.match((await specLink.run()).message, /Symlinked specification/);
-});
-
-test('file byte limits, invalid UTF-8, and aggregate output limits are enforced', async t => {
-  const { run, change, cwd } = await fixture(t);
-  await writeFile(path.join(change, 'proposal.md'), '🧪'.repeat(17_000));
-  assert.match((await run()).message, /size limit/);
-  await writeFile(path.join(change, 'proposal.md'), Buffer.from([0xc3, 0x28]));
-  assert.match((await run()).message, /UTF-8/);
-  await writeFile(path.join(change, 'proposal.md'), 'x'.repeat(60_000));
-  const data = metadata();
-  for (let index = 1; index < 10; index++) {
-    const changeName = `large-${index}`;
-    data.requirements.push({ ...structuredClone(data.requirements[0]), id: `REQ-0${index + 1}0`, change: changeName });
-    const directory = path.join(cwd, 'openspec', 'changes', changeName);
-    await mkdir(directory);
-    await writeFile(path.join(directory, 'proposal.md'), await readFile(path.join(change, 'proposal.md')));
+  for (const text of ['- State: done', '- Owner: ' + 'x'.repeat(201), '- State: backlog\n- State: blocked']) {
+    const data = await fixture(t); await writeFile(path.join(data.change, 'proposal.md'), '# Proposal\n## Kanban\n' + text); assert.equal((await data.run()).kind, 'error');
   }
-  await writeFile(path.join(cwd, 'openspec', 'requirements.json'), JSON.stringify(data));
-  assert.match((await run()).message, /512 KiB output limit/);
+  const data = await fixture(t); await writeFile(path.join(data.change, 'tasks.md'), '- [ ] 1.1 First\n- [x] 1.1 Duplicate');
+  assert.match((await data.run()).message, /Duplicate task IDs/);
+});
+
+test('unsafe actions, local private workspaces and symlinked changes/artifacts cannot escape the store', async t => {
+  const data = await fixture(t), outside = await fixture(t);
+  for (const action of [{ action: 'write' }, { action: 'board', command: 'anything' }]) assert.equal((await collect(action, { cwd: data.cwd })).kind, 'error');
+  assert.equal((await collect({ action: 'board' }, { cwd: path.join(data.cwd, '.local') })).kind, 'error');
+  await rm(path.join(data.change, 'tasks.md')); await symlink(path.join(outside.change, 'tasks.md'), path.join(data.change, 'tasks.md'));
+  assert.match((await data.run()).message, /Symlinked or escaping/);
+  await rm(path.join(data.change, 'tasks.md')); await writeFile(path.join(data.change, 'tasks.md'), '- [ ] 1.1 Safe');
+  await symlink(outside.change, path.join(data.changes, 'SA-REQ-001-linked'));
+  assert.match((await data.run()).message, /Symlinked change/);
+});
+
+test('byte limits, invalid UTF-8, group limit, aggregate output limit and safe empty stores are enforced', async t => {
+  const data = await fixture(t);
+  await writeFile(path.join(data.change, 'proposal.md'), '🧪'.repeat(17000)); assert.match((await data.run()).message, /size limit/);
+  await writeFile(path.join(data.change, 'proposal.md'), Buffer.from([0xc3, 0x28])); assert.match((await data.run()).message, /UTF-8/);
+  await writeFile(path.join(data.change, 'proposal.md'), 'x'.repeat(60000));
+  for (let i = 1; i < 10; i++) { const directory = path.join(data.changes, `SA-REQ-${i}-large`); await mkdir(directory); await writeFile(path.join(directory, 'proposal.md'), 'x'.repeat(60000)); }
+  assert.match((await data.run()).message, /512 KiB output limit/);
+  await rm(data.changes, { recursive: true }); await mkdir(data.changes);
+  assert.deepEqual((await data.run()).requirements, []);
+  for (let i = 0; i < 51; i++) await mkdir(path.join(data.changes, `SA-REQ-${i}-feature`));
+  assert.match((await data.run()).message, /50-requirement limit/);
+});
+
+test('Kanban code examples are ignored and duplicate sections, blank states, aliases and broken links are validated', async t => {
+  const data = await fixture(t);
+  await writeFile(path.join(data.change, 'proposal.md'), '# Proposal\n```md\n## Kanban\n- State: blocked\n```\n## Kanban\n* Owner: Someone\n+ State: in_progress\n');
+  let item = (await data.run()).requirements[0];
+  assert.equal(item.roles[0].state, 'in_progress'); assert.equal(item.roles[0].owner, 'Someone');
+  await writeFile(path.join(data.change, 'proposal.md'), '# Proposal\n## Kanban\n## Kanban\n');
+  assert.match((await data.run()).message, /Duplicate Kanban section/);
+  await writeFile(path.join(data.change, 'proposal.md'), '# Proposal\n## Kanban\n- State: \n');
+  assert.match((await data.run()).message, /Invalid Kanban State/);
+  await writeFile(path.join(data.change, 'proposal.md'), '# Proposal');
+  await writeFile(path.join(data.roots.Frontend, 'tasks.md'), '- [ ] 1.1 [FE] Edit UI');
+  assert.equal((await data.run()).requirements[0].roles[1].tasks[0].description, 'Edit UI');
+  await writeFile(path.join(data.change, 'tasks.md'), '- [ ] 1.1 [BE] Wrong role');
+  assert.match((await data.run()).message, /must belong to SA/);
+  await rm(path.join(data.change, 'tasks.md')); await symlink(path.join(data.cwd, 'missing'), path.join(data.change, 'tasks.md'));
+  assert.match((await data.run()).message, /Symlinked/);
 });

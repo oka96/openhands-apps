@@ -23,10 +23,11 @@ export function validateRoleInput(input) {
   requireValue(exact(input, withIds ? [...fields, 'automation_id', 'request_id'] : fields), 'Invalid role automation input fields.');
   requireValue(STAGES.includes(input.stage) && ROLES.includes(input.role), 'Choose a supported role and OpenSpec skill.');
   requireValue(path(input.spec_store), 'Load an absolute local spec store directory first.');
-  requireValue(typeof input.requirement_id === 'string' && input.requirement_id.length <= 64 &&
-    /^REQ-[0-9]{3,}$/.test(input.requirement_id), 'Choose a valid requirement.');
-  requireValue(slug(input.context_change) && slug(input.change), 'Enter a kebab-case change name of at most 100 characters.');
-  requireValue(input.change === input.context_change, 'Role actions must use this requirement’s change.');
+  requireValue(typeof input.requirement_id === 'string' && input.requirement_id.length <= 160 &&
+    /^[A-Z][A-Z0-9]*-[0-9]+$/.test(input.requirement_id), 'Choose a valid requirement.');
+  const context = typeof input.context_change === 'string' && input.context_change.match(/^(SA|FE|BE|QA)-([A-Z][A-Z0-9]*-[0-9]+)-([a-z0-9]+(?:-[a-z0-9]+)*)$/);
+  requireValue(context && input.context_change.length <= 160 && context[2] === input.requirement_id && input.change === input.spec_id &&
+    (input.stage === 'propose' || input.context_change === input.change), 'Role actions must use a canonical change in this requirement.');
   const prefix = `${{ SA: 'SA', Frontend: 'FE', Backend: 'BE', QA: 'QA' }[input.role]}-${input.requirement_id}-`;
   requireValue(typeof input.spec_id === 'string' && input.spec_id.length <= 160 && input.spec_id.startsWith(prefix) &&
     SLUG.test(input.spec_id.slice(prefix.length)), 'Choose a spec belonging to this requirement and role.');
@@ -43,16 +44,33 @@ function validateResponse(data, action, input) {
     requireValue(exact(data, ['version', 'kind', 'run_id', 'automation_id', 'request_id']) && uuid(data.run_id) &&
       data.automation_id === input.automation_id && data.request_id === input.request_id, invalid);
   } else if (action === 'status') {
-    requireValue(exact(data, ['version', 'kind', 'run_id', 'automation_id', 'status', 'conversation_id', 'error']) &&
+    requireValue(exact(data, ['version', 'kind', 'run_id', 'automation_id', 'status', 'conversation_id', 'error', 'report']) &&
       data.run_id === input.run_id && data.automation_id === input.automation_id && STATES.includes(data.status) &&
       (data.conversation_id === null || uuid(data.conversation_id)) &&
       (data.error === null || text(data.error, 600)), invalid);
+    if (data.report !== null) {
+      const report = data.report, result = report?.outcome;
+      requireValue(exact(report, ['role', 'stage', 'requirement_id', 'spec_id', 'configuration', 'outcome']) &&
+        ROLES.includes(report.role) && STAGES.includes(report.stage) &&
+        (report.requirement_id === null && report.spec_id === null && data.conversation_id === null ||
+          typeof report.requirement_id === 'string' && /^[A-Z][A-Z0-9]*-[0-9]+$/.test(report.requirement_id) &&
+          typeof report.spec_id === 'string' && report.spec_id.length <= 160 &&
+          report.spec_id.startsWith(`${{ SA: 'SA', Frontend: 'FE', Backend: 'BE', QA: 'QA' }[report.role]}-${report.requirement_id}-`) &&
+          SLUG.test(report.spec_id.slice(`${{ SA: 'SA', Frontend: 'FE', Backend: 'BE', QA: 'QA' }[report.role]}-${report.requirement_id}-`.length))), invalid);
+      validateConfiguration(report.configuration, false, invalid);
+      requireValue(exact(result, ['status', 'blocker_type', 'summary', 'findings', 'audit_errors', 'next_action', 'agent_status']) &&
+        ['completed', 'blocked', 'needs_review', 'execution_error'].includes(result.status) &&
+        [null, 'dependency', 'input'].includes(result.blocker_type) && (result.status === 'blocked' || result.blocker_type === null) &&
+        [null, 'completed', 'blocked', 'findings'].includes(result.agent_status) && text(result.summary, 2000) && result.summary.length > 0 &&
+        text(result.next_action, 1000) && result.next_action.length > 0 &&
+        ['findings', 'audit_errors'].every(key => Array.isArray(result[key]) && result[key].length <= 8 && result[key].every(value => text(value, 1000))) &&
+        ['COMPLETED', 'FAILED'].includes(data.status) && (data.status === 'COMPLETED') === (result.status === 'completed'), invalid);
+    }
   } else {
     requireValue(exact(data, ['version', 'kind', 'ready', 'automations', 'configuration', 'message']) &&
       typeof data.ready === 'boolean' && text(data.message, 600) && Array.isArray(data.automations) && data.automations.length <= 12, invalid);
     const config = data.configuration;
-    requireValue(exact(config, ['workspace', 'spec_store', 'store_id', 'repository']) && path(config.workspace) &&
-      path(config.spec_store) && slug(config.store_id) && config.repository === REPOSITORY, invalid);
+    validateConfiguration(config, true, invalid);
     const ids = new Set(), stages = new Set();
     for (const row of data.automations) {
       const pair = `${row.role}:${row.stage}`;
@@ -64,6 +82,13 @@ function validateResponse(data, action, input) {
     requireValue(action !== 'setup' || data.ready, invalid);
   }
   return data;
+}
+
+function validateConfiguration(config, repository, message) {
+  requireValue(exact(config, ['workspace', 'spec_store', 'store_id', 'profile', 'skill_root', 'timeout_seconds', ...(repository ? ['repository'] : [])]) &&
+    path(config.workspace) && path(config.spec_store) && path(config.skill_root) && slug(config.store_id) &&
+    text(config.profile, 200) && config.profile.trim().length > 0 && Number.isInteger(config.timeout_seconds) &&
+    config.timeout_seconds >= 60 && config.timeout_seconds <= 1800 && (!repository || config.repository === REPOSITORY), message);
 }
 
 export async function callRoleAutomation(host, action, input) {

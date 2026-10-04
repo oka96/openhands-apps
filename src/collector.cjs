@@ -6,9 +6,6 @@ const path = require('node:path');
 
 const ROLE_IDS = ['SA', 'Frontend', 'Backend', 'QA'];
 const ROLE_LABELS = ['Solution Architect', 'Frontend', 'Backend', 'Quality Assurance'];
-const ROLE_PREFIX = { SA: 'SA', Frontend: 'FE', Backend: 'BE', QA: 'QA' };
-const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-const REQUIREMENT_ID = /^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*$/;
 const MAX_FILE = 64 * 1024;
 const MAX_METADATA = 128 * 1024;
 const MAX_OUTPUT = 512 * 1024;
@@ -33,7 +30,10 @@ function localSegment(value) { return value.split(path.sep).includes('.local'); 
 function safePath(target, root) {
   requireValue(contained(root, target) && !localSegment(target), 'Source path is outside the permitted store.');
   let canonical;
-  try { canonical = fs.realpathSync(target); }
+  try {
+    requireValue(!fs.lstatSync(target).isSymbolicLink(), 'Symlinked or escaping source paths are not supported.');
+    canonical = fs.realpathSync(target);
+  }
   catch (error) { if (error.code === 'ENOENT') return false; throw error; }
   requireValue(canonical === target && contained(root, canonical) && !localSegment(canonical),
     'Symlinked or escaping source paths are not supported.');
@@ -64,44 +64,6 @@ function readFile(target, root, limit = MAX_FILE) {
   } finally { if (descriptor !== undefined) fs.closeSync(descriptor); }
 }
 
-function validateMetadata(value) {
-  requireValue(object(value) && fields(value, ['version', 'name', 'description', 'requirements']) && [1, 2].includes(value.version)
-    && text(value.name, 200) && text(value.description, 4000, true) && Array.isArray(value.requirements)
-    && value.requirements.length <= MAX_REQUIREMENTS, 'Invalid openspec/requirements.json store metadata.');
-  for (const item of value.requirements) {
-    requireValue(object(item) && fields(item, ['id', 'title', 'summary', 'change', 'roles'])
-      && text(item.id, 64) && REQUIREMENT_ID.test(item.id) && text(item.title, 200) && text(item.summary, 4000, true)
-      && text(item.change, 100) && SLUG.test(item.change)
-      && object(item.roles) && fields(item.roles, ROLE_IDS), 'Invalid requirement metadata.');
-    if (value.version === 2) {
-      requireValue(/^REQ-[0-9]{3,}$/.test(item.id) && ROLE_IDS.every(id => Object.hasOwn(item.roles, id)), 'Invalid requirement ID or missing role metadata.');
-      let specs = 0;
-      for (const [id, role] of Object.entries(item.roles)) {
-        requireValue(object(role) && fields(role, ['owner', 'note', 'specs']) && text(role.owner, 200)
-          && text(role.note, 4000, true) && Array.isArray(role.specs), 'Invalid role-spec metadata.');
-        specs += role.specs.length;
-        for (const spec of role.specs) {
-          const prefix = `${ROLE_PREFIX[id]}-${item.id}-`;
-          requireValue(object(spec) && fields(spec, ['id', 'title', 'state', 'note']) && text(spec.id, 160)
-            && spec.id.startsWith(prefix) && SLUG.test(spec.id.slice(prefix.length)) && text(spec.title, 200)
-            && ['backlog', 'in_progress', 'blocked'].includes(spec.state) && text(spec.note, 4000, true),
-          'Invalid spec identity, role ownership, or spec metadata.');
-        }
-      }
-      requireValue(specs <= 20, 'A requirement exceeded the 20-spec limit.');
-      continue;
-    }
-    for (const role of Object.values(item.roles)) {
-      requireValue(object(role) && fields(role, ['owner', 'state', 'note']) && text(role.owner, 200)
-        && ['backlog', 'in_progress', 'blocked'].includes(role.state) && text(role.note, 4000, true), 'Invalid requirement role metadata.');
-    }
-  }
-  unique(value.requirements.map(item => item.id), 'Duplicate requirement IDs in store metadata.');
-  unique(value.requirements.map(item => item.change), 'Multiple requirements point to the same change.');
-  if (value.version === 2) unique(value.requirements.flatMap(item => Object.values(item.roles).flatMap(role => role.specs.map(spec => spec.id))), 'Duplicate spec IDs in store metadata.');
-  return value;
-}
-
 function parseTasks(content, sourcePath) {
   const tasks = [];
   (content || '').split(/\r?\n/).forEach((line, index) => {
@@ -114,9 +76,9 @@ function parseTasks(content, sourcePath) {
     let role = null;
     const number = description.match(/^(\d+(?:\.\d+)+|\d+)\.?\s+/);
     if (number) { id = number[1]; description = description.slice(number[0].length); }
-    const rolePrefix = description.match(/^\[(SA|Frontend|Backend|QA)\]\s*/);
+    const rolePrefix = description.match(/^\[(SA|Frontend|Backend|QA|FE|BE)\]\s*/);
     if (rolePrefix) {
-      role = rolePrefix[1];
+      role = ({ FE: 'Frontend', BE: 'Backend' })[rolePrefix[1]] || rolePrefix[1];
       description = description.slice(rolePrefix[0].length);
       if (!number) {
         const after = description.match(/^(\d+(?:\.\d+)+|\d+)\.?\s+/);
@@ -152,15 +114,17 @@ function specsArtifact(changeRoot, workspace, warnings) {
       requireValue(!entry.isSymbolicLink(), 'Symlinked specification paths are not supported.');
       const file = path.join(directory, entry.name);
       if (entry.isDirectory()) {
-        requireValue(SLUG.test(entry.name), 'Specification directory names must be kebab-case.');
+        requireValue(/^[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$/.test(entry.name), 'Invalid specification directory name.');
         scan(file, depth + 1);
       } else if (entry.name === 'spec.md') {
         const content = readFile(file, workspace);
         requireValue(content !== null, 'A specification changed while it was being read; refresh to try again.');
+        if (!content.trim()) warnings.push(`Empty specification: ${path.relative(workspace, file)}.`);
         const piece = `# ${path.relative(workspace, file)}\n\n${content}`;
         combinedBytes += Buffer.byteLength(piece, 'utf8') + (pieces.length ? 7 : 0);
         requireValue(combinedBytes <= MAX_METADATA, 'Combined requirement specifications exceeded the 128 KiB limit.');
         pieces.push(piece);
+        requireValue(pieces.length <= 20, 'A role change exceeded the 20-capability limit.');
       }
     }
   }
@@ -171,95 +135,75 @@ function specsArtifact(changeRoot, workspace, warnings) {
   return { id: 'specs', path: target, status: pieces.length ? 'present' : 'missing', content };
 }
 
-function requirement(item, workspace) {
-  const root = path.join(workspace, 'openspec', 'changes', item.change);
-  safePath(root, workspace);
-  const warnings = [];
+const CHANGE = /^(SA|FE|BE|QA)-([A-Z][A-Z0-9]*)-([0-9]+)-([a-z0-9]+(?:-[a-z0-9]+)*)$/;
+const PREFIX_ROLE = { SA: 'SA', FE: 'Frontend', BE: 'Backend', QA: 'QA' };
+function context(content) {
+  const labels = { 'Requirement title': 200, 'Requirement summary': 4000, 'Spec title': 200,
+    Owner: 200, 'Role note': 4000, State: 20, Note: 4000 };
+  const result = {}; let active = false, key = null, seen = false, fenced = false;
+  for (const line of content.split(/\r?\n/)) {
+    if (/^\s*(`{3,}|~{3,})/.test(line)) { fenced = !fenced; continue; }
+    if (fenced) continue;
+    if (line.trim() === '## Kanban') { requireValue(!seen, 'Duplicate Kanban section.'); active = seen = true; key = null; continue; }
+    if (/^#{1,2}\s/.test(line)) { active = false; key = null; }
+    if (!active) continue;
+    const field = line.match(/^[-*+] ([^:]+):(?: (.*))?$/);
+    if (field && Object.hasOwn(labels, field[1])) {
+      key = field[1]; requireValue(!Object.hasOwn(result, key), `Duplicate Kanban ${key} field.`); result[key] = field[2] || '';
+    } else if (field) key = null;
+    else if (/^  /.test(line) && key) result[key] += '\n' + line.slice(2);
+    else if (line.trim()) key = null;
+  }
+  for (const [name, value] of Object.entries(result)) requireValue(text(value, labels[name], true), `Invalid Kanban ${name} field.`);
+  requireValue(!Object.hasOwn(result, 'State') || ['backlog', 'in_progress', 'blocked'].includes(result.State), 'Invalid Kanban State field.');
+  return result;
+}
+function roleChange(name, match, workspace) {
+  const root = path.join(workspace, 'openspec', 'changes', name), warnings = [];
   const artifacts = [artifact('proposal', path.join(root, 'proposal.md'), workspace, warnings),
     artifact('design', path.join(root, 'design.md'), workspace, warnings), specsArtifact(root, workspace, warnings),
     artifact('tasks', path.join(root, 'tasks.md'), workspace, warnings)];
-  const tasks = parseTasks(artifacts[3].content, artifacts[3].path);
-  const roles = ROLE_IDS.map((id, index) => {
-    const metadata = item.roles[id];
-    const ownTasks = tasks.filter(task => task.role === id);
-    const complete = ownTasks.filter(task => task.done).length;
-    if (!metadata) warnings.push(`${id} has no owner or state metadata.`);
-    if (!ownTasks.length) warnings.push(`${id} has no tracked tasks; completion is unverified.`);
-    const state = ownTasks.length > 0 && complete === ownTasks.length ? 'done'
-      : metadata?.state === 'blocked' ? 'blocked'
-        : complete > 0 || metadata?.state === 'in_progress' ? 'in_progress' : 'backlog';
-    return { id, label: ROLE_LABELS[index], owner: metadata?.owner || 'Unassigned', state, note: metadata?.note || '',
-      complete, total: ownTasks.length, tasks: ownTasks };
+  const display = context(artifacts[0].content), role = PREFIX_ROLE[match[1]];
+  const tasks = parseTasks(artifacts[3].content, artifacts[3].path).map(task => {
+    requireValue(task.role === null || task.role === role, `Every task in ${name} must belong to ${role}.`);
+    return { ...task, role, specId: name };
   });
-  const unassigned = tasks.filter(task => task.role === null);
-  if (unassigned.length) warnings.push(`${unassigned.length} task${unassigned.length === 1 ? '' : 's'} without a recognized role; assign SA, Frontend, Backend, or QA.`);
-  const rolesComplete = roles.filter(role => role.state === 'done').length;
-  let stage;
-  if (roles.some(role => role.state === 'blocked')) stage = 'blocked';
-  else if (rolesComplete === ROLE_IDS.length && unassigned.every(task => task.done)) stage = 'done';
-  else if (roles.every(role => role.state === 'backlog')) stage = 'backlog';
-  else if (roles[0].state !== 'done') stage = 'sa';
-  else if (roles[1].state !== 'done' || roles[2].state !== 'done') stage = 'implementation';
-  else if (roles[3].state !== 'done') stage = 'qa';
-  else stage = 'implementation';
-  return { id: item.id, title: item.title, summary: item.summary, change: item.change,
-    stage, roles, complete: tasks.filter(task => task.done).length, total: tasks.length, rolesComplete,
-    tasks, warnings, artifacts };
+  const complete = tasks.filter(task => task.done).length;
+  if (!tasks.length) warnings.push('No tracked tasks; completion is unverified.');
+  if (artifacts.some(item => !item.content.trim())) warnings.push('Planning or task content is missing or empty; completion is unverified.');
+  const state = tasks.length && complete === tasks.length && !warnings.length ? 'done'
+    : display.State === 'blocked' ? 'blocked' : complete || display.State === 'in_progress' ? 'in_progress' : 'backlog';
+  return { display, spec: { id: name, change: name, title: display['Spec title'] || match[4].replaceAll('-', ' '), role,
+    state, note: display.Note || '', complete, total: tasks.length, tasks, artifacts, warnings } };
 }
-
-function requirementWithSpecs(item, workspace) {
-  const root = path.join(workspace, 'openspec', 'changes', item.change);
-  safePath(root, workspace);
-  const registered = new Set(ROLE_IDS.flatMap(role => item.roles[role].specs.map(spec => spec.id)));
-  for (const kind of ['specs', 'tasks']) {
-    const directory = path.join(root, kind);
-    if (!safePath(directory, workspace)) continue;
-    requireValue(fs.statSync(directory).isDirectory(), `Expected a ${kind} directory.`);
-    const entries = fs.readdirSync(directory, { withFileTypes: true });
-    requireValue(entries.length <= 500, 'A requirement exceeded the source directory entry limit.');
-    for (const entry of entries) {
-      const tracked = kind === 'specs' ? entry.isDirectory() || entry.isSymbolicLink() : entry.name.endsWith('.md');
-      if (!tracked) continue;
-      const id = kind === 'specs' ? entry.name : entry.name.slice(0, -3);
-      requireValue(!entry.isSymbolicLink() && (kind !== 'tasks' || entry.isFile()), 'Symlinked or irregular role spec source paths are not supported.');
-      requireValue(registered.has(id), `Unregistered ${kind} source ${entry.name} in ${item.id}; register the role spec or move the source outside the active schema paths.`);
-    }
-  }
-  const warnings = [];
-  const artifacts = ['proposal', 'design'].map(id => artifact(id, path.join(root, `${id}.md`), workspace, warnings));
-  const specs = ROLE_IDS.flatMap(role => item.roles[role].specs.map(metadata => {
-    const ownWarnings = [];
-    const ownArtifacts = [artifact('specs', path.join(root, 'specs', metadata.id, 'spec.md'), workspace, ownWarnings),
-      artifact('tasks', path.join(root, 'tasks', `${metadata.id}.md`), workspace, ownWarnings)];
-    const tasks = parseTasks(ownArtifacts[1].content, ownArtifacts[1].path).map(task => ({ ...task, specId: metadata.id }));
-    requireValue(tasks.every(task => task.role === role), `Every task in ${metadata.id} must have its owning [${role}] role tag.`);
-    const complete = tasks.filter(task => task.done).length;
-    if (!tasks.length) ownWarnings.push('No tracked tasks; completion is unverified.');
-    if (!ownArtifacts[0].content.trim()) ownWarnings.push('Specification content is missing or empty; completion is unverified.');
-    const state = tasks.length && complete === tasks.length && ownArtifacts[0].content.trim() ? 'done'
-      : metadata.state === 'blocked' ? 'blocked' : complete || metadata.state === 'in_progress' ? 'in_progress' : 'backlog';
-    warnings.push(...ownWarnings.map(warning => `${metadata.id}: ${warning}`));
-    return { id: metadata.id, title: metadata.title, role, state, note: metadata.note,
-      complete, total: tasks.length, tasks, artifacts: ownArtifacts, warnings: ownWarnings };
-  }));
+function requirement(id, entries) {
+  const specs = entries.map(entry => entry.spec).sort((a, b) => ROLE_IDS.indexOf(a.role) - ROLE_IDS.indexOf(b.role) || (a.id < b.id ? -1 : 1)), warnings = specs.flatMap(spec => spec.warnings.map(w => `${spec.id}: ${w}`));
+  const displayValue = (label, fallback) => {
+    const values = [...new Set(entries.map(entry => entry.display[label]).filter(Boolean))];
+    if (values.length > 1) warnings.push(`Conflicting ${label} values; using the first change in folder-name order.`);
+    return values[0] || fallback;
+  };
+  const title = displayValue('Requirement title', id), summary = displayValue('Requirement summary', '');
   const tasks = specs.flatMap(spec => spec.tasks);
+  requireValue(specs.length <= 20, 'A requirement exceeded the 20-spec limit.');
   requireValue(tasks.length <= MAX_TASKS, 'A requirement exceeded the 500-task limit.');
   const roles = ROLE_IDS.map((id, index) => {
-    const ownSpecs = specs.filter(spec => spec.role === id);
-    const ownTasks = ownSpecs.flatMap(spec => spec.tasks);
-    if (!ownSpecs.length) warnings.push(`${id} has no registered specs; completion is unverified.`);
-    const state = ownSpecs.length && ownSpecs.every(spec => spec.state === 'done') ? 'done'
-      : ownSpecs.some(spec => spec.state === 'blocked') ? 'blocked'
-        : ownSpecs.some(spec => ['done', 'in_progress'].includes(spec.state)) ? 'in_progress' : 'backlog';
-    return { id, label: ROLE_LABELS[index], owner: item.roles[id].owner, note: item.roles[id].note, state,
-      specs: ownSpecs.map(spec => spec.id), tasks: ownTasks, complete: ownTasks.filter(task => task.done).length, total: ownTasks.length };
+    const own = entries.filter(entry => entry.spec.role === id), ownSpecs = own.map(entry => entry.spec), ownTasks = ownSpecs.flatMap(spec => spec.tasks);
+    if (!own.length) warnings.push(`${id} has no role changes; completion is unverified.`);
+    const state = own.length && ownSpecs.every(spec => spec.state === 'done') ? 'done' : ownSpecs.some(spec => spec.state === 'blocked') ? 'blocked'
+      : ownSpecs.some(spec => ['done', 'in_progress'].includes(spec.state)) ? 'in_progress' : 'backlog';
+    const values = key => [...new Set(own.map(entry => entry.display[key]).filter(Boolean))].join(' · ');
+    const owner = values('Owner') || 'Unassigned', note = values('Role note');
+    requireValue(text(owner, 4000) && text(note, 80000, true), 'Aggregated role context exceeds its limit.');
+    return { id, label: ROLE_LABELS[index], owner, note, state, specs: ownSpecs.map(spec => spec.id), tasks: ownTasks,
+      complete: ownTasks.filter(task => task.done).length, total: ownTasks.length };
   });
   const rolesComplete = roles.filter(role => role.state === 'done').length;
   const stage = roles.some(role => role.state === 'blocked') ? 'blocked' : rolesComplete === 4 ? 'done'
     : roles.every(role => role.state === 'backlog') ? 'backlog' : roles[0].state !== 'done' ? 'sa'
       : roles[1].state !== 'done' || roles[2].state !== 'done' ? 'implementation' : 'qa';
-  return { id: item.id, title: item.title, summary: item.summary, change: item.change, stage, roles,
-    complete: tasks.filter(task => task.done).length, total: tasks.length, rolesComplete, tasks, warnings, artifacts, specs };
+  return { id, title, summary, stage, roles, complete: tasks.filter(task => task.done).length, total: tasks.length,
+    rolesComplete, tasks, warnings, specs };
 }
 
 function errorResult(error) {
@@ -272,14 +216,25 @@ async function collect(input, { cwd = process.cwd() } = {}) {
     requireValue(text(cwd, 4096) && path.isAbsolute(cwd) && !/[\r\n]/.test(cwd) && !localSegment(cwd), 'Workspace must be an absolute local store path.');
     const workspace = path.resolve(cwd);
     requireValue(safePath(workspace, workspace) && fs.statSync(workspace).isDirectory(), 'Store directory is unavailable.');
-    const raw = readFile(path.join(workspace, 'openspec', 'requirements.json'), workspace, MAX_METADATA);
-    requireValue(raw !== null, 'Missing openspec/requirements.json. Select an OpenSpec store directory.');
-    let metadata;
-    try { metadata = JSON.parse(raw); } catch { throw new CollectorError('openspec/requirements.json is not valid JSON.'); }
-    validateMetadata(metadata);
-    const result = { version: metadata.version, kind: 'board', workspace, name: metadata.name, description: metadata.description,
-      generatedAt: new Date().toISOString(), requirements: metadata.requirements.map(item =>
-        metadata.version === 2 ? requirementWithSpecs(item, workspace) : requirement(item, workspace)) };
+    const changes = path.join(workspace, 'openspec', 'changes');
+    requireValue(safePath(changes, workspace) && fs.statSync(changes).isDirectory(), 'Missing openspec/changes directory. Select an OpenSpec store directory.');
+    const entries = fs.readdirSync(changes, { withFileTypes: true }).sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+    requireValue(entries.length <= 1000, 'The changes directory exceeded its entry limit.');
+    const groups = new Map();
+    for (const entry of entries) {
+      if (entry.name === 'archive') continue;
+      requireValue(!entry.isSymbolicLink(), 'Symlinked change paths are not supported.');
+      const match = entry.name.match(CHANGE);
+      if (!match) { requireValue(!/^(?:SA|FE|BE|QA)-/i.test(entry.name), `Malformed role change folder: ${entry.name}.`); continue; }
+      requireValue(entry.isDirectory() && entry.name.length <= 160, 'Role change must be a directory with an identity of at most 160 characters.');
+      const id = `${match[2]}-${match[3]}`;
+      if (!groups.has(id)) groups.set(id, []);
+      groups.get(id).push(roleChange(entry.name, match, workspace));
+      requireValue(groups.size <= MAX_REQUIREMENTS, 'The store exceeded the 50-requirement limit.');
+    }
+    const result = { version: 3, kind: 'board', workspace, name: path.basename(workspace) || 'OpenSpec store',
+      description: 'Requirements discovered from role change folders', generatedAt: new Date().toISOString(),
+      requirements: [...groups].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([id, items]) => requirement(id, items)) };
     requireValue(Buffer.byteLength(JSON.stringify(result), 'utf8') <= MAX_OUTPUT, 'Store data exceeded the 512 KiB output limit.');
     return result;
   } catch (error) { return errorResult(error); }

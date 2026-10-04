@@ -22,13 +22,14 @@ async function fixture(t) {
   // Quotes, Unicode and shell metacharacters must only travel through structured cwd.
   const cwd = path.join(root, "用户's $(echo injected) `echo surprise`");
   t.after(() => rm(root, { recursive: true, force: true }));
-  const change = path.join(cwd, 'openspec', 'changes', 'sample-change');
-  await mkdir(change, { recursive: true });
-  await writeFile(path.join(cwd, 'openspec', 'requirements.json'), JSON.stringify({ version: 1, name: '需求 🛍️', description: '', requirements: [{
-    id: 'REQ-001', title: '<img src=x onerror=alert(1)>', summary: '', change: 'sample-change',
-    roles: Object.fromEntries(['SA', 'Frontend', 'Backend', 'QA'].map(role => [role, { owner: 'Name', state: 'backlog', note: '' }])),
-  }] }));
-  await writeFile(path.join(change, 'tasks.md'), ['SA', 'Frontend', 'Backend', 'QA'].map((role, index) => `- [ ] ${index + 1}.1 [${role}] Finish ${role}`).join('\n'));
+  for (const [index, role] of ['SA', 'Frontend', 'Backend', 'QA'].entries()) {
+    const change = path.join(cwd, 'openspec/changes', `${['SA', 'FE', 'BE', 'QA'][index]}-REQ-001-sample`);
+    await mkdir(path.join(change, 'specs/sample'), { recursive: true });
+    await writeFile(path.join(change, 'proposal.md'), '# Proposal\n## Kanban\n- Requirement title: <img src=x onerror=alert(1)>\n');
+    await writeFile(path.join(change, 'design.md'), '# Design');
+    await writeFile(path.join(change, 'specs/sample/spec.md'), '# Spec');
+    await writeFile(path.join(change, 'tasks.md'), `- [ ] 1.1 Finish ${role}\n- [ ] 1.2 Verify ${role}`);
+  }
   const data = await collect({ action: 'board' }, { cwd });
   assert.equal(data.kind, 'board');
   return { cwd, data };
@@ -52,7 +53,7 @@ test('the fixed embedded collector round-trips through a real shell with Unicode
   const board = await loadBoard(host, cwd + '/');
   assert.equal(called, 1);
   assert.equal(board.workspace, cwd);
-  assert.equal(board.name, '需求 🛍️');
+  assert.equal(board.name, path.basename(cwd));
   assert.equal(board.requirements[0].title, '<img src=x onerror=alert(1)>');
   assert.equal(Object.hasOwn(board.requirements[0], 'priority'), false);
 });
@@ -75,7 +76,7 @@ test('malformed, partial, failed, oversize and host-error responses never become
     await assert.rejects(loadBoard(hostReturning(value), cwd));
   }
   await assert.rejects(loadBoard({ agentServer: { request: async () => { throw new Error('private connection details'); } } }, cwd), /Cannot read this store/);
-  await assert.rejects(loadBoard(hostReturning(response({ version: 1, kind: 'error', message: 'Missing openspec/requirements.json.' }, { exit_code: 1 })), cwd), /Missing openspec\/requirements.json/);
+  await assert.rejects(loadBoard(hostReturning(response({ version: 1, kind: 'error', message: 'Missing openspec/changes.' }, { exit_code: 1 })), cwd), /Missing openspec\/changes/);
 });
 
 test('client rejects stale, future, cross-workspace and duplicate requirement responses', async t => {
@@ -101,9 +102,9 @@ test('client independently rejects removed fields and inconsistent counts, roles
     item => { item.roles[0].tasks[0] = { ...item.roles[0].tasks[0], description: 'Different' }; }, item => { item.tasks[0].sourcePath = '/outside/tasks.md'; },
     item => { item.tasks[0].role = 'DevOps'; }, item => { item.tasks[0].done = 'yes'; },
     item => { item.tasks[1].id = item.tasks[0].id; }, item => { item.tasks[1].line = item.tasks[0].line; },
-    item => { item.roles.reverse(); }, item => { item.artifacts[0].path = '/outside/proposal.md'; },
-    item => { item.artifacts[0].status = 'missing'; item.artifacts[0].content = 'Not empty'; },
-    item => { item.warnings = []; }, item => { item.roles[0].note = 123; },
+    item => { item.roles.reverse(); }, item => { item.specs[0].artifacts[0].path = '/outside/proposal.md'; },
+    item => { item.specs[0].artifacts[0].status = 'missing'; item.specs[0].artifacts[0].content = 'Not empty'; },
+    item => { item.specs[0].warnings = ['Not propagated']; }, item => { item.roles[0].note = 123; },
   ]) {
     const next = structuredClone(data); edit(next.requirements[0]);
     assert.throws(() => validateBoard(next, cwd), /invalid or inconsistent/);
