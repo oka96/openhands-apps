@@ -83,6 +83,8 @@ directly by click, Enter or Space; the narrower right panel shows its form and
 native automation history. Exploring the diagram does not change the automation.
 The embedded viewer hides Archify's node-details popup so it does not cover the
 workflow; automation details remain in the right panel.
+App dropdowns share consistent spacing and focus styles. Supporting browsers
+also show styled option menus; other browsers retain their native picker.
 The arrows illustrate a typical workflow: actions are independent and run only
 when you explicitly submit.
 
@@ -229,7 +231,7 @@ Build once, then add each package in **Customize → Apps → Add app**:
 
 Leave Ref and Repository path blank for these local directories. Each manifest
 and self-contained `extension.js` is at its package root. Install and enable all
-five packages at the same release version, currently 0.10.1.
+five packages at the same release version, currently 0.10.2.
 
 Installation leaves the app disabled. Review the source, then choose
 **Enable trusted app**. The app runs inside Canvas and uses its authenticated

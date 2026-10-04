@@ -75,6 +75,17 @@ All five app packages SHALL be built and validated from shared source. Page disp
 - **WHEN** a user navigates away while discovery or artifact loading is pending
 - **THEN** the disposed page is not repopulated by the late response and a new page uses its own current context
 
+### Requirement: Consistent app dropdowns
+App-owned requirement, role-spec, automation and Kanban role-filter dropdowns SHALL share clear spacing, a recognizable arrow, visible keyboard focus and distinct selected options. Native labels, keyboard selection and existing target/filter behavior SHALL remain intact. Enhanced menu styling SHALL fall back to native pickers in unsupported browsers. This styling SHALL exclude the embedded Archify viewer.
+
+#### Scenario: Choose a long role-spec label
+- **WHEN** a user opens the role-spec dropdown in a supported browser
+- **THEN** the menu aligns with the field, long option text remains readable and selecting an option uses the existing artifact and automation target behavior
+
+#### Scenario: Navigate dropdowns by keyboard
+- **WHEN** a user focuses an app dropdown and uses the keyboard to choose or dismiss an option
+- **THEN** focus remains visible, the native selection and Escape behavior remain available and no automation is dispatched
+
 ### Requirement: Interactive Archify workflow workspace
 Each role app SHALL show the actual Archify Propose, Update and Apply viewer in a larger left canvas and the selected automation details, real target selection and prompt form in a smaller right column. Archify zoom, pan, reset, finder, focus, lens, radar, route, presentation, theme/style and export controls SHALL remain available where supported by the viewer. Nodes SHALL support pointer and keyboard selection, expose selection accessibly and never dispatch on selection. The selected automation marker and form stage SHALL stay synchronized independently of viewer inspection focus, preserving draft text and current source view during node changes. Narrow layouts SHALL stack the panels without horizontal page overflow or hidden controls.
 

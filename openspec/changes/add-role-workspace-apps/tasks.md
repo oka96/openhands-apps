@@ -49,3 +49,8 @@
 
 - [x] 9.1 Hide the Semantic Passport popup only in the embedded role viewer, preserving native selection, keyboard handling and canvas controls; build and validate all five packages at 0.10.1.
 - [x] 9.2 Update the installed packages and verify pointer/keyboard selection without the popup, preserved prompts and working zoom in all four roles; record browser evidence without dispatching work.
+
+## 10. App dropdown styling
+
+- [x] 10.1 Refine native app dropdown fields and supported picker menus while preserving keyboard, target and filter behavior; exclude Archify, build and validate release 0.10.2.
+- [x] 10.2 Update the installed apps and visually verify role selectors and the Kanban filter, keyboard selection/dismissal and narrow-screen containment; save evidence without running automations.

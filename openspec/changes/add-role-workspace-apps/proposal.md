@@ -15,6 +15,7 @@ The user wants separate OpenHands apps for SA, FE, BE and QA. Kanban currently c
 - Present execution as Automation throughout the app controls, accessible labels and help. Preserve the existing OpenSpec Propose, Update and Apply implementation and all saved app/run identities; source artifact content remains literal.
 - Give every role app a two-column workflow workspace: a large interactive Archify Propose/Update/Apply canvas on the left and a narrower selected automation, target and prompt form on the right. Preserve Archify viewer controls including zoom, pan, reset, search, focus, presentation and export. Keep artifact Preview and Source in a full-width section below both columns. Selecting a node never starts work.
 - Suppress Archify's Semantic Passport popup in embedded role workflows so selecting an automation leaves the canvas unobstructed. Keep the standalone viewer and other canvas controls unchanged.
+- Refine only app-owned dropdowns with consistent spacing, chevrons, focus states and menu styling, retaining native selection behavior and excluding Archify controls.
 
 ## Capabilities
 
