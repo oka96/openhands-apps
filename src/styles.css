@@ -284,3 +284,7 @@
 .osb-automation-item p,.osb-automation-item a { font-size:11px; line-height:1.6; margin:6px 0; }
 .osb-automation-catalog [hidden] { display:none; }
 @media(max-width:650px) { .osb-automation-list { grid-template-columns:1fr; } }
+
+.osb-applications { margin: 10px 0; padding: 10px 12px; border-left: 2px solid var(--osb-accent, #6b8afd); background: rgba(100, 130, 190, .06); overflow-wrap: anywhere; }
+.osb-application { margin-top: 5px; font-size: 12px; }
+.osb-card-applications { font-size: 11px; opacity: .8; margin: 4px 0; overflow-wrap: anywhere; }

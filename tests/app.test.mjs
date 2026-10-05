@@ -1153,3 +1153,20 @@ test('retained target and artifact controls cannot remount actions after refresh
   assert.equal(app.query('.osb-root'), null);
   assert.deepEqual(app.navigation, []);
 });
+
+test('each role screen shows bound applications and upstream specs without dispatching', async t => {
+  const { addRepositoryScopes } = await import('./helpers/role-specs.mjs');
+  const fixture = await roleSpecsFixture(t);
+  await addRepositoryScopes(fixture);
+  for (const role of ROLE_IDS) await t.test(role, async t => {
+    const ui = setup(t, { role, path: 'requirements/REQ-001', storage: { 'openhands.apps.openspec-progress:v3:local-main:store': fixture.cwd }, request: async () => output(await fixture.run()) });
+    await settled();
+    const scopes = [...ui.document.querySelectorAll('.osb-applications')];
+    assert(scopes.length, `${role} scope visible`);
+    const links = scopes.flatMap(node => [...node.querySelectorAll('a')]);
+    assert(links.length >= (role === 'SA' ? 3 : 1));
+    for (const link of links) assert.match(link.href, role === 'SA' ? /github.com\/example\/sample-/ : new RegExp(`sample-${role.toLowerCase()}$`));
+    assert.match(ui.document.body.textContent, role === 'SA' ? /Design and handoff only/ : /Based on: SA-REQ-001-labels/);
+    assert(!ui.automationCalls.some(call => call.method === 'POST'));
+  });
+});

@@ -162,7 +162,16 @@ export function mountRoleActions({ host, container, navigate, workspace, require
   skill.value = stage; skillLabel.append(skill);
   const changeLabel = el('label', 'osb-skill-field'); changeLabel.append(el('span', 'osb-label', 'New feature name'));
   const change = el('input'); change.setAttribute('aria-label', `${role.id} new feature name`);
-  change.placeholder = 'date-validation'; change.maxLength = 160 - prefix.length; changeLabel.append(change);
+  change.placeholder = 'booking-validation'; change.maxLength = 160 - prefix.length; changeLabel.append(change);
+  const appLabel = el('label', 'osb-skill-field'); appLabel.append(el('span', 'osb-label', 'Impacted application'));
+  const application = el('select'); application.setAttribute('aria-label', `${role.id} impacted application`);
+  const appChoices = [...new Map((requirement?.specs || []).filter(item => item.role === 'SA').flatMap(item => item.scope?.applications || [])
+    .filter(item => item.role === role.id).map(item => [item.id, item])).values()];
+  if (appChoices.length !== 1) { const option = el('option', '', 'Choose an application'); option.value = ''; application.append(option); }
+  for (const item of appChoices) { const option = el('option', '', `${item.name} · ${item.id}`); option.value = item.id; application.append(option); }
+  const selectedApp = specs.find(item => item.id === specId)?.scope?.applications[0]?.id;
+  if (selectedApp && appChoices.some(item => item.id === selectedApp)) application.value = selectedApp;
+  appLabel.append(application);
   const specPreview = el('p', 'osb-muted'); specPreview.setAttribute('aria-live', 'polite');
   const promptLabel = el('label', 'osb-skill-field');
   const promptTitle = el('span', 'osb-label'); promptLabel.append(promptTitle);
@@ -172,7 +181,7 @@ export function mountRoleActions({ host, container, navigate, workspace, require
   if (typeof initialDraft?.feature === 'string') change.value = initialDraft.feature;
   const help = el('p', 'osb-skill-help');
   const submit = el('button', 'osb-button osb-primary'); submit.type = 'submit';
-  form.append(externalSelection ? selected : skillLabel, changeLabel, specPreview, promptLabel, help, submit);
+  form.append(externalSelection ? selected : skillLabel, changeLabel, ...(appChoices.length && role.id !== 'SA' ? [appLabel] : []), specPreview, promptLabel, help, submit);
   const result = el('div', 'osb-run-result'); result.setAttribute('role', 'status'); result.setAttribute('aria-live', 'polite');
   body.append(form, connectionText, target, launchHelp, connectionActions, setupHelp, result);
   panel.append(body); container.append(panel);
@@ -197,7 +206,7 @@ export function mountRoleActions({ host, container, navigate, workspace, require
       const config = connection.configuration;
       target.textContent = `${connection.ready ? 'Effective settings' : 'Configured settings · reconnect required'}\n` +
         `Role: ${role.id} · Automation: ${SKILLS[stage]}\nAgent profile: ${config.profile} · Timeout: ${config.timeout_seconds} seconds\n` +
-        `Code project: ${config.workspace}\nSpec store: ${config.spec_store}\nWorkflow resources: ${config.skill_root}`;
+        `Managed workspaces: ${config.workspace}\nSpec store: ${config.spec_store}\nWorkflow resources: ${config.skill_root}`;
     }
     const matches = connection?.configuration?.spec_store === workspace;
     submit.disabled = !supportedTarget || busy || !connection?.ready || !matches || Boolean(last) || (stage !== 'propose' && !specId);
@@ -205,6 +214,8 @@ export function mountRoleActions({ host, container, navigate, workspace, require
     setup.disabled = probe.disabled = busy;
     setup.hidden = Boolean(connection?.ready);
     setupHelp.hidden = Boolean(connection?.ready);
+    appLabel.hidden = stage !== 'propose' || role.id === 'SA' || !appChoices.length;
+    application.required = !appLabel.hidden; application.disabled = dispatching;
     changeLabel.hidden = stage !== 'propose'; change.required = stage === 'propose';
     specPreview.hidden = stage !== 'propose';
     specPreview.textContent = home ? 'Choose a requirement to preview the new spec name.' : `New spec: ${prefix}${change.value.trim() || '<feature>'}`;
@@ -310,7 +321,7 @@ export function mountRoleActions({ host, container, navigate, workspace, require
         context_change: stage === 'propose' ? (specId || requirement.specs[0]?.change) : specId, role: role.id,
         change: stage === 'propose' ? prefix + change.value.trim() : specId,
         spec_id: stage === 'propose' ? prefix + change.value.trim() : specId,
-        request: prompt.value });
+        request: prompt.value, ...(stage === 'propose' && appChoices.length ? { application_id: application.value } : {}) });
     } catch (error) { renderLast(error.message); return; }
     const automation = connection.automations.find(item => item.stage === stage && item.role === role.id);
     if (!automation) { renderLast('Reconnect the role automations before running this automation.'); return; }

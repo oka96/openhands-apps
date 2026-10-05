@@ -1,5 +1,15 @@
 # OpenSpec apps for OpenHands
 
+Role changes declare repository bindings and upstream references in `scope.json`.
+SA (`sa`) can impact several applications and performs design/handoff only.
+Frontend (`frontend`) and Backend (`backend`) each bind one repository and refer
+to SA. QA (`qa`) binds one regression repository and refers to SA, FE and BE.
+Kanban cards and role work lists derive application names from these sources;
+role detail panels show repository links and upstream change IDs. Propose offers
+an application selector when a downstream role has multiple impacted applications.
+Automation creates a managed checkout before starting the conversation. Settings
+show the workspace parent; run reports show the actual checkout used.
+
 Five native Canvas apps share one OpenSpec store and the existing twelve role
 automations. **OpenSpec Kanban** shows requirement progress. **SA Workflow**,
 **FE Workflow**, **BE Workflow** and **QA Workflow** each provide a fixed-role work

@@ -163,7 +163,7 @@ test('inline role controls default to Apply and automatically probe without conn
   await app.ready();
   assert.deepEqual(app.actions.map(item => item.action), ['probe']);
   assert.equal(app.button('Run SA Apply').disabled, false);
-  assert.match(app.container.textContent, /Code project:.*openhands-demo/);
+  assert.match(app.container.textContent, /Managed workspaces:.*openhands-demo/);
   assert.match(app.container.textContent, /Spec store:.*openspec-store/);
   await app.ready();
   assert.deepEqual(app.actions.map(item => item.action), ['probe']);
@@ -885,4 +885,19 @@ test('selected automation details never substitute another role or fabricate a m
   assert.equal(app.query('.osb-selected-automation-definition a').getAttribute('href'), `/automations/${AUTOMATIONS[2].id}`);
   assert.equal(app.button('Run SA Apply').disabled, true);
   assert.equal(app.dispatched().length, 0);
+});
+
+
+test('Propose binds a selected impacted application without allowing event repository overrides', async t => {
+  const requirement = structuredClone(REQUIREMENT);
+  const apps = ['one', 'two'].map(id => ({ id, name: id, role: 'Backend', repository: `https://github.com/example/${id}.git` }));
+  requirement.specs.find(spec => spec.role === 'SA').scope = { version: 1, applications: apps, references: [] };
+  const ui = setup(t, { role: 'Backend', requirement });
+  await ui.ready(); ui.select('propose'); ui.fill('Implement the selected application', 'booking');
+  const selector = ui.query('[aria-label="Backend impacted application"]');
+  assert.equal(selector.options.length, 3);
+  selector.value = 'two'; ui.submit(); await settled();
+  assert.equal(ui.dispatched().length, 1);
+  assert.equal(ui.dispatched()[0].input.application_id, 'two');
+  assert(!Object.hasOwn(ui.dispatched()[0].input, 'repository'));
 });

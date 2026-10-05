@@ -19,6 +19,7 @@ const requireValue = (condition, message) => { if (!condition) throw new Error(m
 
 export function validateRoleInput(input) {
   const fields = ['stage', 'spec_store', 'requirement_id', 'context_change', 'role', 'spec_id', 'change', 'request'];
+  if (object(input) && Object.hasOwn(input, 'application_id')) { fields.push('application_id'); requireValue(slug(input.application_id) && input.application_id.length <= 80, 'Choose an impacted application.'); }
   const withIds = object(input) && (Object.hasOwn(input, 'automation_id') || Object.hasOwn(input, 'request_id'));
   requireValue(exact(input, withIds ? [...fields, 'automation_id', 'request_id'] : fields), 'Invalid role automation input fields.');
   requireValue(STAGES.includes(input.stage) && ROLES.includes(input.role), 'Choose a supported role and OpenSpec automation.');

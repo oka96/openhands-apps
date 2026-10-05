@@ -191,7 +191,7 @@ class Bridge:
                 and type(config.get('version', 1)) is int and config.get('version', 1) == 1, 'Invalid role-workflow.json configuration')
         for field in ('workspace', 'spec_store', 'skill_root'):
             directory = local_path(config[field])
-            require(directory.is_dir(), 'A configured role workflow directory is missing')
+            require(field == 'workspace' or directory.is_dir(), 'A configured role workflow directory is missing')
         require(slug(config['store_id']) and isinstance(config['profile'], str) and 0 < len(config['profile']) <= 200
                 and '\x00' not in config['profile'] and type(config['timeout_seconds']) is int
                 and 60 <= config['timeout_seconds'] <= 1800, 'Invalid role workflow store, profile, or timeout')
@@ -421,7 +421,9 @@ class Bridge:
 
     def validate_input(self, data, *, context=True):
         fields = {'automation_id', 'request_id', 'stage', 'spec_store', 'requirement_id', 'context_change', 'role', 'spec_id', 'change', 'request'}
-        require(isinstance(data, dict) and set(data) == fields, 'Unexpected role automation input fields')
+        require(isinstance(data, dict) and fields <= set(data) and set(data) <= fields | {'application_id'}, 'Unexpected role automation input fields')
+        if 'application_id' in data:
+            require(slug(data['application_id']) and len(data['application_id']) <= 80, 'Invalid application selection')
         require(identifier(data['automation_id']) and identifier(data['request_id']), 'Invalid automation or request ID')
         require(data['stage'] in STAGES and data['role'] in ROLES, 'Unsupported automation or role')
         require(local_path(data['spec_store']) == Path(self.config['spec_store']), 'Selected store does not match the configured role workflow')
@@ -515,10 +517,16 @@ class Bridge:
                     'Invalid role result target')
             config = report['configuration']
             require(isinstance(config, dict) and set(config) == {'workspace', 'spec_store', 'store_id', 'profile', 'skill_root', 'timeout_seconds'}
-                    and all(config[key] == self.config[key] for key in ('workspace', 'spec_store', 'store_id'))
+                    and all(config[key] == self.config[key] for key in ('spec_store', 'store_id'))
                     and isinstance(config['profile'], str) and 0 < len(config['profile']) <= 200 and '\x00' not in config['profile']
                     and type(config['timeout_seconds']) is int and 60 <= config['timeout_seconds'] <= 1800,
                     'Invalid role result configuration')
+            actual = local_path(config['workspace'])
+            parent = Path(self.config['workspace'])
+            valid_workspace = actual == parent
+            if spec and actual.parent == parent / spec:
+                valid_workspace = actual.name == 'planning' if role == 'SA' else slug(actual.name)
+            require(valid_workspace, 'Invalid role result workspace')
             local_path(config['skill_root'])
             outcome = report['outcome']
             require(isinstance(outcome, dict) and set(outcome) == {'status', 'blocker_type', 'summary', 'findings', 'audit_errors', 'next_action', 'agent_status'}

@@ -500,6 +500,16 @@ class BridgeTests(unittest.TestCase):
         self.assertEqual(value['error'], None)
         self.assertEqual(self.client.probe()['configuration']['profile'], 'saved-profile')
 
+    def test_managed_workspace_report_accepts_bound_child_and_rejects_other_change(self):
+        target, path, report = self.completed_report()
+        expected = str(Path(self.config['workspace']) / report['spec_id'] / 'sample-frontend')
+        report['configuration']['workspace'] = expected
+        path.write_text(json.dumps(report))
+        self.assertEqual(self.client.status(target)['report']['configuration']['workspace'], expected)
+        report['configuration']['workspace'] = str(Path(self.config['workspace']) / 'FE-REQ-999-other' / 'sample-frontend')
+        path.write_text(json.dumps(report))
+        self.assertIsNone(self.client.status(target)['report'])
+
     def test_foreign_and_malformed_reports_fall_back_without_exposing_contents(self):
         target, path, report = self.completed_report()
         for edit in ({'run_id': identity()}, {'conversation_id': identity()}, {'role': 'Backend'}, {'stage': 'propose'},

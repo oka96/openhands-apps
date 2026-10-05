@@ -117,3 +117,18 @@ test('strict client rejects tampered spec identity, path, counts, grouping and p
     assert.throws(() => validateBoard(next, fixture.cwd));
   }
 });
+
+test('repository scopes load for all roles and fail closed on broken upstreams', async t => {
+  const { addRepositoryScopes } = await import('./helpers/role-specs.mjs');
+  const fixture = await roleSpecsFixture(t);
+  const scopes = await addRepositoryScopes(fixture);
+  const board = await fixture.run();
+  assert.equal(board.kind, 'board');
+  const specs = board.requirements[0].specs;
+  assert.equal(specs.find(s => s.role === 'SA').scope.applications.length, 3);
+  assert.equal(specs.find(s => s.role === 'QA').scope.references.length, 4);
+  const qa = specs.find(s => s.role === 'QA');
+  scopes[qa.id].references = scopes[qa.id].references.filter(id => !id.startsWith('BE-'));
+  await writeFile(path.join(fixture.root, qa.id, 'scope.json'), JSON.stringify(scopes[qa.id]));
+  assert.match((await fixture.run()).message, /missing required upstream/);
+});

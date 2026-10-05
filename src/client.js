@@ -1,3 +1,4 @@
+import { ROLE_SCHEMAS, validateRepositoryScope } from './repository-scope.js';
 import collectorSource from './collector.cjs?raw';
 import { validateWorkspace } from './workspace.js';
 export { validateWorkspace } from './workspace.js';
@@ -46,13 +47,16 @@ function validateRequirementWithSpecs(item, workspace) {
   }
   check(unique(item.specs.map(spec => spec.id)));
   for (const spec of item.specs) {
-    check(fields(spec, ['id', 'change', 'title', 'role', 'state', 'note', 'complete', 'total', 'tasks', 'artifacts', 'warnings'])
+    check(fields(spec, ['id', 'change', 'title', 'role', 'state', 'note', 'complete', 'total', 'tasks', 'artifacts', 'warnings', 'schema', 'scope'])
       && text(spec.id, 160) && spec.change === spec.id && text(spec.title, 200) && ROLES.includes(spec.role)
       && spec.id.startsWith(`${PREFIXES[spec.role]}-${item.id}-`) && SLUG.test(spec.id.slice(`${PREFIXES[spec.role]}-${item.id}-`.length))
       && ['backlog', 'in_progress', 'blocked', 'done'].includes(spec.state) && text(spec.note, 4000, true)
       && count(spec.total) && count(spec.complete) && spec.complete <= spec.total && Array.isArray(spec.tasks) && spec.tasks.length === spec.total
       && Array.isArray(spec.artifacts) && spec.artifacts.length === 4 && Array.isArray(spec.warnings) && spec.warnings.length <= 510
       && spec.warnings.every(warning => text(warning, 4000)) && unique(spec.warnings));
+    if (spec.schema !== undefined) check(['spec-driven', ROLE_SCHEMAS[spec.role]].includes(spec.schema));
+    if (spec.scope) validateRepositoryScope(spec.scope, spec.id, ref => item.specs.find(value => value.id === ref)?.scope);
+    if (spec.schema && spec.schema !== 'spec-driven') check(Boolean(spec.scope));
     const root = `${workspace === '/' ? '' : workspace}/openspec/changes/${spec.change}`;
     ['proposal', 'design', 'specs', 'tasks'].forEach((id, index) => validateArtifact(spec.artifacts[index], id,
       `${root}/${id === 'specs' ? 'specs' : `${id}.md`}`, spec.warnings));

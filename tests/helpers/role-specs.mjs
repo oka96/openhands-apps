@@ -35,3 +35,16 @@ export async function roleSpecsFixture(t) {
   await save();
   return { cwd, root, metadata, save, removeRole, run: () => collect({ action: 'board' }, { cwd }) };
 }
+
+export async function addRepositoryScopes(fixture) {
+  const apps = ['Frontend', 'Backend', 'QA'].map(role => ({ id: `sample-${role.toLowerCase()}`, name: `Meeting room ${role}`, role, repository: `https://github.com/example/sample-${role.toLowerCase()}.git` }));
+  const entries = Object.entries(fixture.metadata.requirements[0].roles);
+  const scopes = {};
+  for (const [role, info] of entries) for (const spec of info.specs) {
+    const references = role === 'SA' ? [] : entries.filter(([r]) => role === 'QA' ? ['SA', 'Frontend', 'Backend'].includes(r) : r === 'SA').flatMap(([, info]) => info.specs.map(s => s.id));
+    scopes[spec.id] = { version: 1, applications: role === 'SA' ? apps : apps.filter(app => app.role === role), references };
+    await writeFile(path.join(fixture.root, spec.id, 'scope.json'), JSON.stringify(scopes[spec.id]));
+    await writeFile(path.join(fixture.root, spec.id, '.openspec.yaml'), `schema: ${role.toLowerCase()}\n`);
+  }
+  return scopes;
+}

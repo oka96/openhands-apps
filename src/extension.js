@@ -41,6 +41,22 @@ function stageLabel(stage) { return STAGES.find(([id]) => id === stage)?.[1] || 
 function time(value) { return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
 
 export function activate(host) { return activateApp(host, KANBAN_APP); }
+
+function applicationSummary(spec) {
+  const section = el('div', 'osb-applications');
+  section.setAttribute('aria-label', `Impacted applications for ${spec.id}`);
+  if (!spec.scope) { section.append(el('span', 'osb-muted', 'Repository scope not configured')); return section; }
+  section.append(el('strong', 'osb-label', spec.role === 'SA' ? 'Impacted applications · Design and handoff only' : 'Application repository'));
+  for (const app of spec.scope.applications) {
+    const row = el('div', 'osb-application');
+    const anchor = el('a', 'osb-run-link', `${app.name} · ${app.repository.split('/').slice(-2).join('/')}`);
+    anchor.href = app.repository.replace(/\.git$/, ''); anchor.target = '_blank'; anchor.rel = 'noopener noreferrer';
+    row.append(anchor); section.append(row);
+  }
+  if (spec.scope.references.length) section.append(el('p', 'osb-muted', 'Based on: ' + spec.scope.references.join(', ')));
+  return section;
+}
+
 export function activateRoleApp(host, roleId) { return activateApp(host, roleApp(roleId)); }
 
 function activateApp(host, app) {
@@ -209,6 +225,7 @@ function activateApp(host, app) {
       const top = el('div', 'osb-card-top'); top.append(el('span', 'osb-id', requirement.id));
       const title = el('h3'); title.append(link(requirement.title, requirementHref(requirement.id), 'osb-card-title'));
       item.append(top, title, el('p', 'osb-card-summary', requirement.summary), roleStrip(requirement));
+      for (const spec of requirement.specs) if (spec.scope) item.append(el('p', 'osb-card-applications', `${SHORT[spec.role]} · ${spec.scope.applications.map(app => app.name).join(', ')}`));
       const foot = el('div', 'osb-card-foot');
       foot.append(el('span', '', `${requirement.rolesComplete}/4 roles${requirement.specs ? ` · ${requirement.specs.length} specs` : ''}`), el('span', '', `${requirement.complete}/${requirement.total} tasks`));
       item.append(meter(requirement.complete, requirement.total, `${requirement.id} tasks complete`), foot);
@@ -314,7 +331,7 @@ function activateApp(host, app) {
           const role = req.roles.find(role => role.id === fixedRole), specs = req.specs.filter(spec => spec.role === fixedRole);
           const row = el('section', 'osb-role-work-item'); const title = el('h3'); title.append(link(`${req.id} · ${req.title}`, requirementHref(req.id), ''));
           row.append(title, badge(STATES[role.state], role.state), el('p', 'osb-muted', `${role.complete} / ${role.total} tasks · ${specs.length} changes`));
-          for (const spec of specs) row.append(link(`${spec.id} · ${spec.title}`, appHref(app, workspace, req.id, spec.id), 'osb-spec-link'));
+          for (const spec of specs) { row.append(link(`${spec.id} · ${spec.title}`, appHref(app, workspace, req.id, spec.id), 'osb-spec-link')); row.append(applicationSummary(spec)); }
           if (!specs.length) row.append(el('p', 'osb-muted', `No ${app.short} changes yet. Open this requirement to propose one.`));
           results.append(row);
         }
@@ -400,6 +417,7 @@ function activateApp(host, app) {
             });
             group.append(open, el('h4', '', spec.title), badge(STATES[spec.state], spec.state),
               el('span', 'osb-spec-progress', `${spec.complete} / ${spec.total} tasks`));
+            group.append(applicationSummary(spec));
             if (spec.note) group.append(el('p', 'osb-role-note', spec.note));
             group.append(taskList(spec.tasks)); panel.append(group);
           }
