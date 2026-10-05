@@ -1,0 +1,49 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Role delivery workflow",
+    "output": ".archify/workflow-role-delivery-20261006-061811/role-workflow.html",
+    "locale": "en",
+    "animation": "none",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/oka96/openhands-automation.git",
+      "revision": "2669f17cad298e29875857a41886a780d59d3c30",
+      "link_mode": "local-only"
+    }
+  },
+  "lanes": [
+    { "id": "role-work", "label": "Plan and implement" },
+    { "id": "delivery", "label": "Inspect and deliver" },
+    { "id": "publication", "label": "Publish a pull request" }
+  ],
+  "mainPath": ["action-propose", "action-update", "action-apply", "action-review", "action-commit"],
+  "nodes": [
+    { "id": "action-propose", "lane": "role-work", "col": 0, "type": "backend", "label": "Propose", "sublabel": "Create a role spec", "width": 152, "height": 68,
+      "sources": [{ "path": "runtime/actions.json", "line": 2, "label": "Propose automation" }, { "path": "runtime/run.py", "line": 790, "end_line": 820, "label": "Create change and save revision" }] },
+    { "id": "action-update", "lane": "role-work", "col": 1, "type": "backend", "label": "Update", "sublabel": "Revise specs from prompt", "width": 152, "height": 68,
+      "sources": [{ "path": "prompts/role-update.md", "line": 3, "end_line": 19, "label": "Scoped revision instructions" }, { "path": "runtime/run.py", "line": 790, "end_line": 820, "label": "Record every modifying run" }] },
+    { "id": "action-apply", "lane": "role-work", "col": 2, "type": "backend", "label": "Apply", "sublabel": "Code or SA handoff", "width": 152, "height": 68,
+      "sources": [{ "path": "prompts/role-apply.md", "line": 3, "end_line": 26, "label": "Implementation; validation local" }, { "path": "runtime/run.py", "line": 775, "end_line": 820, "label": "Prepare workspace and run" }] },
+    { "id": "action-review", "lane": "delivery", "col": 2, "type": "database", "label": "Review", "sublabel": "Capture exact diff", "width": 152, "height": 68,
+      "sources": [{ "path": "runtime/run.py", "line": 779, "end_line": 784, "label": "Native deterministic review" }, { "path": "runtime/delivery.py", "line": 170, "end_line": 225, "label": "Snapshot and revision storage" }] },
+    { "id": "action-commit", "lane": "delivery", "col": 3, "type": "database", "label": "Commit", "sublabel": "Local commit only", "width": 152, "height": 68,
+      "sources": [{ "path": "runtime/run.py", "line": 779, "end_line": 789, "label": "Native deterministic delivery" }, { "path": "runtime/delivery.py", "line": 277, "end_line": 312, "label": "Require unchanged reviewed files" }] },
+    { "id": "action-merge-request", "lane": "publication", "col": 2, "type": "cloud", "label": "Merge Request", "sublabel": "Branch, push and PR", "width": 152, "height": 68,
+      "sources": [{ "path": "runtime/run.py", "line": 779, "end_line": 789, "label": "Native deterministic delivery" }, { "path": "runtime/delivery.py", "line": 277, "end_line": 336, "label": "Reviewed branch and resumable PR" }] }
+  ],
+  "edges": [
+    { "id": "planning-revision", "from": "action-propose", "to": "action-update", "label": "Refine", "role": "main" },
+    { "id": "revision-implementation", "from": "action-update", "to": "action-apply", "label": "Implement", "role": "main" },
+    { "id": "inspect-code", "from": "action-apply", "to": "action-review", "label": "Inspect", "role": "main" },
+    { "id": "inspect-specs", "from": "action-update", "to": "action-review", "label": "Specs only", "role": "branch", "variant": "dashed" },
+    { "id": "commit-reviewed", "from": "action-review", "to": "action-commit", "label": "Unchanged diff", "role": "main" },
+    { "id": "publish-reviewed", "from": "action-review", "to": "action-merge-request", "label": "Unchanged diff", "role": "branch" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Every node is an automation", "items": ["SA, FE, BE and QA each have these six actions.", "Select an action, supply its inputs, then press Run. Arrows never start work."] },
+    { "dot": "emerald", "title": "Diffs and delivery", "items": ["Spec edits create revision history, including partial failed updates.", "Review captures the selected spec or code diff. Choose local Commit or a GitHub pull request."] },
+    { "dot": "slate", "title": "Role boundaries", "items": ["SA spans repositories and hands off design; it delivers specifications only.", "FE, BE and QA each implement in one bound repository. Validation stays local."] }
+  ]
+}

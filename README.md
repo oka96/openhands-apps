@@ -1,5 +1,11 @@
 # OpenSpec apps for OpenHands
 
+The role apps focus on implementation and delivery. Code validation, acceptance
+checks and regression execution stay local. The workflow has no validation node,
+test dashboard or test-result gate for delivery. Review displays the exact diff
+for Commit or Merge Request; it does not certify code quality. QA implements
+regression code in its own repository. Unrun validation tasks remain unchecked.
+
 Role changes declare repository bindings and upstream references in `scope.json`.
 SA (`sa`) can impact several applications and performs design/handoff only.
 Frontend (`frontend`) and Backend (`backend`) each bind one repository and refer
@@ -10,12 +16,38 @@ an application selector when a downstream role has multiple impacted application
 Automation creates a managed checkout before starting the conversation. Settings
 show the workspace parent; run reports show the actual checkout used.
 
-Five native Canvas apps share one OpenSpec store and the existing twelve role
+Five native Canvas apps share one OpenSpec store and the 24 role
 automations. **OpenSpec Kanban** shows requirement progress. **SA Workflow**,
 **FE Workflow**, **BE Workflow** and **QA Workflow** each provide a fixed-role work
-list, interactive workflow and source-artifact workspace for the role's three
+list, interactive workflow and source-artifact workspace for the role's six
 related automations.
 The app boundary organizes navigation; it does not isolate permissions or data.
+
+All workflow logic lives in `/Users/oka/Desktop/openhands-automation/runtime`.
+The Apps render returned data and pass explicit inputs through small fixed
+transport loaders. The action catalog is generated from Automation during build.
+
+SA home can propose a new requirement: enter its ID, feature, prompt and one or
+more application bindings. Other roles derive their scopes from SA. To inspect
+edits, open **Specification revisions and delivery** in the owning role App.
+**Spec revisions** lists each modifying run, including partial failed updates.
+Select a revision to read its before/after diff. Switching specs keeps each
+specification's history separate.
+
+Select **Review** to capture the current specification or bound code repository
+diff. Then choose **Commit** for a local commit or **Merge Request** for a branch,
+push and GitHub PR. Explicitly select the reviewed snapshot and supply a message.
+SA can deliver only its own specs. Changed files or Git context require a new
+Review. **Delivery receipts** shows the actual commit, branch, publication state
+and PR link; a failed publication can resume with the same snapshot and message.
+No validation result is needed for delivery.
+
+The current six-node Archify source and checked standalone viewer are in
+`.archify/workflow-role-delivery-20261006-061811/`. `candidate.json` cites the
+Automation implementation; the delivery and finalize receipts pin its exact
+bytes and passing browser checks. `npm run workflow:check` verifies those receipts
+and ensures every node matches the action catalog. Older diagrams under `docs/`
+are historical and are not loaded by the Apps.
 
 Role automation controls show the actual profile, selected automation, project,
 store and timeout from `role-workflow.json`. Uninstalled changes are marked as
@@ -44,7 +76,7 @@ selected by default. Use **Load store** to choose another directory visible to
 the connected Agent Server.
 
 - **Board** groups requirements into Backlog, Solution design, Implementation,
-  Verification, Blocked, and Done.
+  Regression code, Blocked, and Done.
 - **List** gives a compact cross-requirement comparison.
 - Search by requirement or spec ID/title, summary, or change name; filter by an unfinished role.
 - Open a card to see all four owners and each role's named specs, progress, notes
@@ -55,7 +87,7 @@ the connected Agent Server.
   or refreshing the requirement.
 - Edit files in the store, then select **Refresh**. Progress and checklists are read-only in the board.
 - In the role workspace, choose a requirement and **Role spec**, then select
-  **Propose**, **Update** or **Apply** in the left workflow. The right panel shows
+  **Propose**, **Update**, **Apply**, **Review**, **Commit** or **Merge Request** in the left workflow. The right panel shows
   the selected automation and prompt. The role stays fixed to that app, and only
   pressing **Run** starts work.
 
@@ -88,7 +120,7 @@ does not edit documents, check tasks, or start automations. If formatting fails,
 
 Open its dedicated role app. The larger left canvas contains the actual Archify
 viewer: zoom, pan, reset, node search, focus, route inspection, theme/style,
-presentation controls. Export is hidden in the embedded workflow. Select **Propose**, **Update** or **Apply**
+presentation controls. Export is hidden in the embedded workflow. Select **Propose**, **Update**, **Apply**, **Review**, **Commit** or **Merge Request**
 directly by click, Enter or Space; the narrower right panel shows its form and
 native automation history. Exploring the diagram does not change the automation.
 The embedded viewer hides Archify's node-details popup so it does not cover the
@@ -111,9 +143,9 @@ expand to their full height.
 Supporting work lists and progress are available in disclosures. On narrow
 screens the workflow stacks above the form.
 Use the shared automation connection setup once to install or reconnect the
-twelve role automation definitions from `/Users/oka/Desktop/openhands-automation`
+24 role automation definitions from `/Users/oka/Desktop/openhands-automation`
 and enable signed local requests. This starts no agent. Every role app uses that
-same connection and filters its catalog to the three automations for its role.
+same connection and filters its catalog to the six automations for its role.
 The underlying actions remain `openspec-propose`, `openspec-update-change` and
 `openspec-apply-change`; Automation is the user-facing name for triggering them.
 Connect also retires the seven legacy stage and three generic role definitions
@@ -128,13 +160,13 @@ Choose an automation and supply one prompt:
 
 - **Propose** requires a new feature slug and prompt. It derives the role change ID and plans the new folder under the selected requirement; no registration file is needed.
 - **Update** requires a selected spec and revision prompt. Submitting authorizes the stated edits to that spec and its tasks. It stops before implementation.
-- **Apply** works through the selected spec's pending tasks. Its prompt is optional and can narrow the work or add constraints; required verification still applies.
+- **Apply** implements the selected spec's pending tasks. Its prompt is optional and can narrow the work or add constraints. Validation remains local; an explicit prompt may request checks, and unrun checks are never reported as passed.
 
 Press **Run <role> <automation>** to create one native automation run. Open its run or
 conversation to inspect results, or use **Refresh run status**. Refresh the
 requirement afterward to read any source changes. A successful dispatch is not
 task completion. Runs stop at their selected automation; they never advance another
-stage, commit, push, archive, or deploy. Missing decisions or tool approvals appear
+stage, archive, or deploy. Only explicit Commit/Merge Request actions change Git history. Missing decisions or tool approvals appear
 as blocked results for the user to resolve.
 
 New conversations have native `requirement`, `role`, `openspecstage`,
@@ -220,12 +252,12 @@ and unfinished siblings cannot count as completion. All four roles must finish.
 Propose creates a new canonical role change with context from any existing change
 in the same requirement. Update and Apply target exactly the selected existing
 change; Update can repair partial planning. Signed automation events use schema
-`openspec-role-dashboard/v3`. Reconnect the twelve definitions after upgrading.
+`openspec-role-dashboard/v3`. Reconnect the 24 definitions after upgrading.
 There is no active requirements registry read or write. Existing native run IDs,
 history, detailed outcomes and duplicate-submission safeguards are preserved.
 
-The sample store validates directly from its current role folders.
-REQ-003 demonstrates two changes per role; REQ-002 retains Solution Design progress.
+The meeting-room sample is ROOM-001 with four scoped role changes and eight
+unchecked tasks, ready for the role automations.
 
 ## Install or update
 
@@ -332,8 +364,8 @@ done
 The app targets manifest schema **1**, host API **1**, Canvas **1.24.0**, and
 the local Agent Server command endpoint. Role actions additionally use the native
 advertised Automation service (1.15.1). Cloud backends are not supported.
-The collector embeds a fixed read-only Node program, uses structured `cwd`,
-validates source paths and data, and bounds files/output. It never reads `.local`
+The collector transport calls the fixed read-only Automation runtime with structured
+`cwd`. Automation owns scope checks, progress rules and bounded file reads. It never reads `.local`
 or browser credentials. Symlink aliases and path traversal are rejected.
 Limits: 50 requirements, 20 specs and 500 tasks per requirement, 160 characters
 per spec ID, 64 KiB per Markdown file, 128 KiB combined specs per change (at most 20 capabilities),

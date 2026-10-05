@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.11.0';
+export const APP_VERSION = '0.12.0';
 export const DEFAULT_STORE = '/Users/oka/Desktop/openspec-store';
 export const KANBAN_APP = Object.freeze({
   name: 'openspec-progress', role: null, short: 'OS', displayName: 'OpenSpec Kanban',

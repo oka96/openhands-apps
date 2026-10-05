@@ -12,6 +12,7 @@ Role workspaces currently stop at Propose, Update and Apply, and the Apps own se
 - Review current spec/code changes before delivery. Commit exactly the reviewed snapshot locally, or push an isolated branch and create a GitHub pull request (the merge-request destination for the supplied GitHub repositories).
 - Support new SA requirements and application bindings, downstream derivation, and prompts for different requirements without editing automation code.
 - Regenerate the interactive workflow with Archify and update all four role Apps and the Kanban entry points.
+- Keep the product focused on implementation and delivery. Validation remains a local activity; do not add test execution, validation dashboards or validation gates to the role Apps.
 
 ## Capabilities
 

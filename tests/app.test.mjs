@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
-import { ACTIONS, STAGES } from '../src/workflow-actions.js';
+import { ACTIONS, STAGES as ACTION_STAGES } from '../src/workflow-actions.js';
 import { JSDOM } from 'jsdom';
 import path from 'node:path';
 import { build } from 'esbuild';
@@ -212,7 +212,7 @@ test('role specs show independent progress and exact selectable sources across r
   assert.equal(app.all('.osb-role-spec').length, 2);
   assert.equal(app.all('.osb-workflow-workspace form').length, 1);
   assert.equal(app.all('.osb-role-actions summary, .osb-role-actions details').length, 0);
-  assert.equal(app.all('.osb-role-actions select').length, 0, 'The diagram is the visible automation selector');
+  assert.equal(app.all('[aria-label="Frontend automation"]').length, 0, 'The diagram is the visible automation selector');
   assert.equal(app.query('.osb-completion strong').textContent, '3 of 4 roles complete');
   assert.equal(app.all('.osb-spec-count')[0].textContent, '1 / 2 specs complete');
   app.change('[aria-label="Artifact spec"]', 'FE-REQ-001-filters');
@@ -250,8 +250,8 @@ test('role specs show independent progress and exact selectable sources across r
 test('Role spec selects the exact target for the single inline automation form', async t => {
   const fixture = await roleSpecsFixture(t);
   const actions = [];
-  const automations = ROLE_IDS.flatMap((role, r) => STAGES.map((stage, s) => ({
-    id: `0f0f0f0f-1111-4444-8888-${String(r * STAGES.length + s + 1).padStart(12, '0')}`,
+  const automations = ROLE_IDS.flatMap((role, r) => ACTION_STAGES.map((stage, s) => ({
+    id: `0f0f0f0f-1111-4444-8888-${String(r * ACTION_STAGES.length + s + 1).padStart(12, '0')}`,
     name: `OpenSpec ${role} · ${ACTIONS.find(action => action.id === stage).label}`, role, stage,
   })));
   const app = setup(t, { role: 'Frontend', path: 'requirements/REQ-001',
@@ -264,6 +264,7 @@ test('Role spec selects the exact target for the single inline automation form',
       if (request.path === '/api/file/home') return { home: '/Users/test' };
       const encoded = request.body.command.match(/'([A-Za-z0-9+/=]+)'\s*$/)[1];
       const payload = JSON.parse(Buffer.from(encoded, 'base64').toString('utf8'));
+      if (payload.action === 'history') return output({ version: 1, kind: 'history', data: { revisions: [], reviews: [], deliveries: [] } });
       actions.push(payload);
       if (payload.action === 'dispatch') return output({ version: 1, kind: 'dispatch',
         automation_id: payload.input.automation_id, request_id: payload.input.request_id,
@@ -337,7 +338,7 @@ test('manifest identity registers the native page and all six Kanban lanes', asy
   assert.equal(manifest.entrypoint, 'extension.js');
   assert.deepEqual(app.registrations, manifest.contributes.pages.map(page => page.id));
   assert.deepEqual(app.all('.osb-lane h2').map(node => node.textContent),
-    ['Backlog', 'Solution design', 'Implementation', 'Verification', 'Blocked', 'Done']);
+    ['Backlog', 'Solution design', 'Implementation', 'Regression code', 'Blocked', 'Done']);
   for (const [index, stage] of STAGES.entries()) {
     assert.equal(app.query(`.osb-stage-${stage} .osb-card .osb-id`).textContent, `REQ-00${index + 1}`);
   }
@@ -410,7 +411,7 @@ test('direct requirement detail displays all roles and read-only task checklists
   const app = setup(t, { path: 'requirements/REQ-004' });
   await settled();
   assert.equal(app.query('.osb-detail-heading h2').textContent, 'Requirement for qa');
-  assert.deepEqual(app.all('.osb-detail-heading .osb-badge').map(node => node.textContent), ['Verification']);
+  assert.deepEqual(app.all('.osb-detail-heading .osb-badge').map(node => node.textContent), ['Regression code']);
   assert.equal(app.query('.osb-completion strong').textContent, '3 of 4 roles complete');
   assert.deepEqual(app.all('.osb-role-panel h3').map(node => node.textContent),
     ['SA · Solution Architect', 'Frontend', 'Backend', 'QA']);
@@ -591,7 +592,7 @@ test('an empty store displays onboarding without a misleading filtered-empty act
   const app = setup(t, { request: () => output(data) });
   await settled();
   assert.equal(app.query('.osb-empty h2').textContent, 'Your board is ready');
-  assert.match(app.query('.osb-empty').textContent, /openspec\/changes/);
+  assert.match(app.query('.osb-empty').textContent, /Open SA Workflow/);
   assert.equal(app.button('Clear filters'), undefined);
   assert.equal(app.query('.osb-metrics strong').textContent, '00');
 });
@@ -778,8 +779,8 @@ test('switching role changes loads all four owned artifact paths without dispatc
 });
 
 function readyAutomations(actions, workspace = DEFAULT_STORE) {
-  const automations = ROLE_IDS.flatMap((role, r) => STAGES.map((stage, s) => ({
-    id: `0f0f0f0f-1111-4444-8888-${String(r * STAGES.length + s + 1).padStart(12, '0')}`,
+  const automations = ROLE_IDS.flatMap((role, r) => ACTION_STAGES.map((stage, s) => ({
+    id: `0f0f0f0f-1111-4444-8888-${String(r * ACTION_STAGES.length + s + 1).padStart(12, '0')}`,
     name: `OpenSpec ${role} · ${ACTIONS.find(action => action.id === stage).label}`, role, stage,
   })));
   return async request => {
@@ -789,6 +790,7 @@ function readyAutomations(actions, workspace = DEFAULT_STORE) {
     if (request.path === '/api/file/home') return { home: '/Users/test' };
     const encoded = request.body.command.match(/'([A-Za-z0-9+/=]+)'\s*$/)[1];
     const payload = JSON.parse(Buffer.from(encoded, 'base64').toString('utf8'));
+    if (payload.action === 'history') return output({ version: 1, kind: 'history', data: { revisions: [], reviews: [], deliveries: [] } });
     actions.push(payload);
     assert.equal(payload.action, 'probe', 'Passive role workspace interactions only probe definitions');
     return output({ version: 1, kind: 'probe', ready: true, automations,
@@ -805,7 +807,7 @@ function assertAutomationLanguage(app) {
 }
 
 for (const descriptor of ROLE_APPS) {
-  test(`${descriptor.displayName} home and detail expose only its work and three related automations`, async t => {
+  test(`${descriptor.displayName} home and detail expose only its work and six related automations`, async t => {
     const actions = [];
     const app = setup(t, { role: descriptor.role, automationRequest: readyAutomations(actions) });
     await settled();
@@ -824,7 +826,7 @@ for (const descriptor of ROLE_APPS) {
       app.selectAutomation(stage);
       const label = stage[0].toUpperCase() + stage.slice(1);
       assert.match(app.query('.osb-selected-automation-definition').textContent, new RegExp(`OpenSpec ${descriptor.role} · ${label}`));
-      assert.equal(app.button(`Run ${descriptor.role} ${label}`).disabled, true);
+      assert.equal(app.button(`Run ${descriptor.role} ${label}`).disabled, !(descriptor.role === 'SA' && stage === 'propose'));
     }
     app.query('.osb-selected-automation-definition a').click();
     assert.match(app.navigation[0], /^\/automations\/0f0f0f0f-/);
@@ -1004,6 +1006,7 @@ test('shared setup updates selected automation history without remounting its dr
     if (request.method === 'GET') return validProbe(request);
     const encoded = request.body.command.match(/'([A-Za-z0-9+/=]+)'\s*$/)[1];
     const payload = JSON.parse(Buffer.from(encoded, 'base64').toString('utf8'));
+    if (payload.action === 'history') return output({ version: 1, kind: 'history', data: { revisions: [], reviews: [], deliveries: [] } });
     actions.push(payload.action);
     if (payload.action === 'setup') connected = true;
     assert.ok(['probe', 'setup'].includes(payload.action));

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "772582c9-3831-42df-8700-052b46ff6725",
+  "status": "current",
+  "command": "deliver",
+  "type": "workflow",
+  "input": "/Users/oka/Desktop/openhands-apps/.archify/workflow-role-delivery-20261006-061811/candidate.json",
+  "output": "/Users/oka/Desktop/openhands-apps/.archify/workflow-role-delivery-20261006-061811/role-workflow.html",
+  "specification": {
+    "sha256": "744c56234ea608eedab9aec76a889b3df5bb97fa0b673e727e1d36cc4df0fb0e",
+    "bytes": 4566
+  },
+  "artifact": {
+    "sha256": "f63ee0ab03c5fd44b5b052c8a5b5a0c4f33cfd225bdf65bc6428c866c151edd7",
+    "bytes": 754607
+  }
+}

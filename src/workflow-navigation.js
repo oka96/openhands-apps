@@ -1,4 +1,4 @@
-import workflowHtml from '../docs/workflows/interactive/role-workflow.html?raw';
+import workflowHtml from '../.archify/workflow-role-delivery-20261006-061811/role-workflow.html?raw';
 import { createWorkflowDocument, isWorkflowMessage } from './workflow-viewer-bridge.js';
 
 import { ACTIONS, STAGES } from './workflow-actions.js';

@@ -93,18 +93,18 @@ test('client rejects stale, future, cross-workspace and duplicate requirement re
   }
 });
 
-test('client independently rejects removed fields and inconsistent counts, roles, completion gates, warnings, and source paths', async t => {
+test('client rejects malformed display fields, duplicate identifiers and unsafe source paths', async t => {
   const { data, cwd } = await fixture(t);
   for (const edit of [
     item => { item.priority = 'high'; },
-    item => { item.complete = 4; }, item => { item.rolesComplete = 4; }, item => { item.stage = 'done'; },
-    item => { item.roles[0].state = 'done'; }, item => { item.roles[0].total = 9; },
-    item => { item.roles[0].tasks[0] = { ...item.roles[0].tasks[0], description: 'Different' }; }, item => { item.tasks[0].sourcePath = '/outside/tasks.md'; },
+    item => { item.complete = '4'; }, item => { item.rolesComplete = 5; }, item => { item.stage = 'invalid'; },
+    item => { item.roles[0].state = 'invalid'; }, item => { item.roles[0].total = -1; },
+    item => { item.tasks[0].sourcePath = '/outside/tasks.md'; },
     item => { item.tasks[0].role = 'DevOps'; }, item => { item.tasks[0].done = 'yes'; },
     item => { item.tasks[1].id = item.tasks[0].id; }, item => { item.tasks[1].line = item.tasks[0].line; },
     item => { item.roles.reverse(); }, item => { item.specs[0].artifacts[0].path = '/outside/proposal.md'; },
     item => { item.specs[0].artifacts[0].status = 'missing'; item.specs[0].artifacts[0].content = 'Not empty'; },
-    item => { item.specs[0].warnings = ['Not propagated']; }, item => { item.roles[0].note = 123; },
+    item => { item.specs[0].warnings = [123]; }, item => { item.roles[0].note = 123; },
   ]) {
     const next = structuredClone(data); edit(next.requirements[0]);
     assert.throws(() => validateBoard(next, cwd), /invalid or inconsistent/);
@@ -112,7 +112,7 @@ test('client independently rejects removed fields and inconsistent counts, roles
   assert.equal(validateBoard(data, cwd), data);
 });
 
-test('client rejects a fully checked requirement with zero tasks in one role falsely reported done', async t => {
+test('client presents automation-owned progress instead of recomputing its completion policy', async t => {
   const { data, cwd } = await fixture(t);
   const item = data.requirements[0];
   item.tasks = item.tasks.filter(task => task.role !== 'QA');
@@ -125,5 +125,5 @@ test('client rejects a fully checked requirement with zero tasks in one role fal
     role.total = role.complete = role.tasks.length;
     role.state = 'done';
   });
-  assert.throws(() => validateBoard(data, cwd), /invalid or inconsistent/);
+  assert.equal(validateBoard(data, cwd), data);
 });

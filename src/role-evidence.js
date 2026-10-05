@@ -9,7 +9,7 @@ export function mountRoleEvidence({ host, container, context, onReviews }) {
   const el = (tag, text, className = '') => {
     const node = document.createElement(tag); node.textContent = text; node.className = className; return node;
   };
-  let disposed = false, generation = 0, kind = 'revisions', listing = null;
+  let disposed = false, generation = 0, historyGeneration = 0, kind = 'revisions', listing = null;
   const panel = el('section', '', 'osb-evidence'); panel.setAttribute('aria-label', 'Specification revisions and delivery');
   const heading = el('div', '', 'osb-artifact-heading');
   const refresh = el('button', 'Refresh history', 'osb-button'); refresh.type = 'button';
@@ -48,7 +48,7 @@ export function mountRoleEvidence({ host, container, context, onReviews }) {
         const details = el('details', '', 'osb-diff-file'); details.open = true;
         details.append(el('summary', `${file.status} · ${file.path}${file.binary ? ' · binary' : ''}`));
         const pre = el('pre', '', 'osb-diff'); pre.setAttribute('aria-label', `Diff for ${file.path}`);
-        for (const line of file.diff.split('\n')) pre.append(el('span', line + '\n', line.startsWith('+') ? 'osb-diff-add' : line.startsWith('-') ? 'osb-diff-remove' : ''));
+        for (const line of file.diff.split('\n')) pre.append(el('span', line || ' ', line.startsWith('+') ? 'osb-diff-add' : line.startsWith('-') ? 'osb-diff-remove' : ''));
         details.append(pre); body.append(details);
       }
     } catch (error) { if (!disposed && generation === current) status.textContent = error.message; }
@@ -66,17 +66,17 @@ export function mountRoleEvidence({ host, container, context, onReviews }) {
       : kind === 'reviews' ? 'Run Review to capture a spec or code diff before delivery.' : 'Commit and Merge Request receipts appear here.';
   }
   async function reload(preferredKind) {
-    const current = ++generation;
+    const current = ++historyGeneration;
     if (preferredKind && LABELS[preferredKind]) kind = preferredKind;
     refresh.disabled = true; status.textContent = 'Loading history…';
     try {
       const result = await callRoleAutomation(host, 'history', context);
-      if (disposed || generation !== current) return;
+      if (disposed || historyGeneration !== current) return;
       listing = result.data; onReviews?.(listing.reviews); renderList();
-    } catch (error) { if (!disposed && generation === current) status.textContent = error.message; }
-    finally { if (!disposed) refresh.disabled = false; }
+    } catch (error) { if (!disposed && historyGeneration === current) status.textContent = error.message; }
+    finally { if (!disposed && historyGeneration === current) refresh.disabled = false; }
   }
   refresh.addEventListener('click', () => reload()); select.addEventListener('change', read);
   reload();
-  return { refresh: reload, dispose() { disposed = true; ++generation; panel.remove(); } };
+  return { refresh: reload, dispose() { disposed = true; ++generation; ++historyGeneration; panel.remove(); } };
 }

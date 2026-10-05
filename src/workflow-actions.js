@@ -26,7 +26,7 @@ export const ACTIONS = Object.freeze([
     "label": "Apply",
     "kind": "agent",
     "skill": "openspec-apply-change",
-    "description": "Implement and verify the selected spec tasks. SA verifies design and handoff only."
+    "description": "Implement the selected spec tasks. SA prepares its design handoff. Validation stays local."
   },
   {
     "id": "commit",

@@ -36,6 +36,13 @@ export function validateRoleInput(input) {
     SLUG.test(input.spec_id.slice(prefix.length)), 'Choose a spec belonging to this requirement and role.');
   requireValue(text(input.request, 10000) && (!['propose', 'update'].includes(input.stage) || input.request.trim().length > 0),
     'Enter a prompt of at most 10000 characters. Propose and Update require a prompt.');
+  if (['review', 'commit', 'merge-request'].includes(input.stage)) {
+    requireValue(['specs', 'code'].includes(input.target) && (input.role !== 'SA' || input.target === 'specs'), 'Choose a repository target. SA can deliver specifications only.');
+    if (input.stage !== 'review') {
+      requireValue(uuid(input.review_id), 'Run Review and select its snapshot before delivery.');
+      requireValue(text(input.message, 500) && input.message.trim().length > 0 && !/[\x00-\x1f]/.test(input.message), 'Enter a one-line commit message or PR title of at most 500 characters.');
+    }
+  }
   if (withIds) requireValue(uuid(input.automation_id) && uuid(input.request_id), 'Invalid automation or request ID.');
   return input;
 }

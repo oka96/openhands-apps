@@ -8,7 +8,7 @@ import { DEFAULT_STORE, KANBAN_APP, ROLE_APPS, roleApp, storeKey } from './app-c
 import { appHref, parseAppPath } from './navigation.js';
 const STAGES = [
   ['backlog', 'Backlog', 'Ready to shape'], ['sa', 'Solution design', 'SA'],
-  ['implementation', 'Implementation', 'Frontend + Backend'], ['qa', 'Verification', 'QA'],
+  ['implementation', 'Implementation', 'Frontend + Backend'], ['qa', 'Regression code', 'QA'],
   ['blocked', 'Blocked', 'Needs a decision'], ['done', 'Done', 'All four roles complete'],
 ];
 const STATES = { backlog: 'Not started', in_progress: 'In progress', blocked: 'Blocked', done: 'Complete' };
@@ -114,7 +114,7 @@ function activateApp(host, app) {
     const actions = el('div', 'osb-header-actions');
     const refresh = button('↻  Refresh', 'osb-button osb-primary', () => refreshData());
     actions.append(badge('Live from files', 'live'), refresh); header.append(branding, actions);
-    const subtitle = el('p', 'osb-subtitle', fixedRole ? `${app.short} changes, source artifacts and related automations.` : 'Requirements → role workspaces → verified tasks.');
+    const subtitle = el('p', 'osb-subtitle', fixedRole ? `${app.short} changes, source artifacts and related automations.` : 'Requirements → role workspaces → implementation.');
     const storeForm = el('form', 'osb-store');
     const storeLabel = el('label', 'osb-store-field');
     storeLabel.append(el('span', 'osb-label', 'SPEC STORE'));
@@ -201,7 +201,7 @@ function activateApp(host, app) {
       metrics.replaceChildren();
       for (const [label, value, hint, kind] of [
         ['Requirements', String(reqs.length).padStart(2, '0'), snapshot.name, ''],
-        ['In delivery', String(reqs.filter(r => !['backlog', 'done', 'blocked'].includes(r.stage)).length).padStart(2, '0'), 'Across design, build & verification', 'active'],
+        ['In delivery', String(reqs.filter(r => !['backlog', 'done', 'blocked'].includes(r.stage)).length).padStart(2, '0'), 'Across design, code & regression work', 'active'],
         ['Roles complete', `${rolesDone} / ${reqs.length * 4}`, 'SA · Frontend · Backend · QA', ''],
         ['Ready / blocked', `${reqs.filter(r => r.stage === 'done').length} / ${reqs.filter(r => r.stage === 'blocked').length}`, 'All roles done / needs attention', ''],
       ]) {

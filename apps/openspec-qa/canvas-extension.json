@@ -2,7 +2,7 @@
   "schema_version": 1,
   "name": "openspec-qa",
   "display_name": "QA Workflow",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "entrypoint": "extension.js",
   "contributes": {
     "pages": [

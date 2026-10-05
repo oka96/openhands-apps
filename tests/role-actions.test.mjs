@@ -64,7 +64,7 @@ function setup(t, options = {}) {
   Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: dom.window.localStorage });
   for (const [key, value] of Object.entries(options.storage || {})) dom.window.localStorage.setItem(key, value);
   const container = dom.window.document.querySelector('main');
-  const actions = [], requests = [], navigation = [], selections = [], storageAccess = [], disposers = new Set();
+  const evidenceCalls = [], actions = [], requests = [], navigation = [], selections = [], storageAccess = [], disposers = new Set();
   if (options.trackStorage) for (const method of ['getItem', 'setItem', 'removeItem']) {
     const original = dom.window.Storage.prototype[method];
     t.mock.method(dom.window.Storage.prototype, method, function (...args) {
@@ -88,7 +88,10 @@ function setup(t, options = {}) {
       const payload = JSON.parse(Buffer.from(encoded, 'base64').toString('utf8'));
       assert.deepEqual(payload.service, SERVICE);
       assert.equal(payload.home, '/Users/test');
-      if (payload.action === 'history') return output({ version: 1, kind: 'history', data: { revisions: [], reviews: [], deliveries: [] } });
+      if (['history', 'record'].includes(payload.action)) {
+        evidenceCalls.push(payload);
+        return options.evidence ? options.evidence(payload) : output({ version: 1, kind: 'history', data: { revisions: [], reviews: [], deliveries: [] } });
+      }
       actions.push(payload);
       if (options.action) {
         const handled = await options.action(payload, actions.length);
@@ -133,7 +136,7 @@ function setup(t, options = {}) {
   });
   const query = selector => container.querySelector(selector);
   const button = name => [...container.querySelectorAll('button')].find(node => node.textContent === name);
-  return { dom, container, host, requests, actions, navigation, selections, storageAccess, mount, dispose, query, button,
+  return { dom, container, host, requests, actions, evidenceCalls, navigation, selections, storageAccess, mount, dispose, query, button,
     controller: () => currentDispose,
     async ready() {
       const panel = query(options.catalog ? '.osb-automation-catalog' : '.osb-role-actions');
@@ -224,9 +227,9 @@ test('invalid Propose and Update inputs cannot dispatch; switching automations u
     assert.ok(app.query('[role="status"]').textContent.length, 'Show actionable validation feedback');
   }
   app.select('update');
-  assert.match(app.query('.osb-skill-help').textContent, /authorizes.*prompt/);
+  assert.match(app.query('.osb-skill-help').textContent, /Revise the selected specification/);
   app.select('apply');
-  assert.match(app.query('.osb-skill-help').textContent, /this role.*verification/);
+  assert.match(app.query('.osb-skill-help').textContent, /Implement the selected spec tasks/);
   assert.equal(app.query('input').parentElement.hidden, true);
   assert.equal(app.query('textarea').required, false);
 });
@@ -286,7 +289,7 @@ test('saved run references isolate backend, store, requirement and role and pres
     assert.equal(app.query('a'), null, `No prior run leaked into ${JSON.stringify(overrides)}`);
   }
   app.dispose(); app.mount(); await app.ready();
-  assert.equal(app.query('a')?.getAttribute('href'), `/automations/${AUTOMATIONS[2].id}?run=${RUN_ID}`);
+  assert.equal(app.query('a')?.getAttribute('href'), `/automations/${AUTOMATIONS.find(item => item.role === 'SA' && item.stage === 'apply').id}?run=${RUN_ID}`);
   assert.equal(app.dispatched().length, 1);
   assert.equal(app.query('textarea').value, '', 'Prompt text is not restored from storage');
 });
@@ -538,7 +541,7 @@ test('connection probes, setup and status checks leave automation and draft inpu
     app.query('input').dispatchEvent(new app.dom.window.Event('input'));
     assert.equal(app.query('input').parentElement.hidden, false);
     assert.equal(app.query('textarea').required, true);
-    assert.match(app.query('.osb-skill-help').textContent, /Add a named spec/);
+    assert.match(app.query('.osb-skill-help').textContent, /Create a role specification/);
     assert.equal(app.button('Run SA Propose').disabled, true);
     app.submit();
     const input = app.actions.find(item => item.action === action).input;
@@ -569,12 +572,12 @@ test('missing, stale and wrong-role bound targets cannot dispatch any automation
   }
 });
 
-for (const role of ROLES) test(`${role} catalog shows only its three existing definitions and history without dispatch`, async t => {
+for (const role of ROLES) test(`${role} catalog shows only its six existing definitions and history without dispatch`, async t => {
   const app = setup(t, { catalog: true, role });
   await app.ready();
   const rows = [...app.container.querySelectorAll('.osb-automation-item')];
   const expected = AUTOMATIONS.filter(item => item.role === role);
-  assert.deepEqual(rows.map(row => row.dataset.stage), STAGES);
+  assert.deepEqual(rows.map(row => row.dataset.stage), ALL_STAGES);
   assert.deepEqual(rows.map(row => row.querySelector('.osb-automation-name').textContent), expected.map(item => item.name));
   const links = [...app.container.querySelectorAll('a')];
   assert.deepEqual(links.map(link => link.getAttribute('href')), expected.map(item => `/automations/${item.id}`));
@@ -587,7 +590,7 @@ for (const role of ROLES) test(`${role} catalog shows only its three existing de
   assert.deepEqual(app.stored(), []);
 });
 
-test('catalog setup is explicitly shared across twelve definitions and checking only probes', async t => {
+test('catalog setup is explicitly shared across 24 definitions and checking only probes', async t => {
   const app = setup(t, { catalog: true, ready: false });
   await app.ready();
   assert.match(app.container.textContent, /24 role automations/);
@@ -611,7 +614,7 @@ test('catalog reserves missing role slots without borrowing another role definit
   assert.equal(app.container.querySelectorAll('.osb-automation-item').length, 6);
   assert.equal(app.container.querySelectorAll('a').length, 1);
   assert.match(app.query('a').getAttribute('href'), new RegExp(AUTOMATIONS.find(item => item.role === 'Backend' && item.stage === 'apply').id));
-  assert.equal([...app.container.querySelectorAll('.osb-automation-item')].filter(row => row.textContent.includes('Definition is not installed')).length, 2);
+  assert.equal([...app.container.querySelectorAll('.osb-automation-item')].filter(row => row.textContent.includes('Definition is not installed')).length, 5);
   assert.doesNotMatch(app.container.textContent, /OpenSpec (SA|Frontend|QA) ·/);
   assert.deepEqual(app.actions.map(item => item.action), ['probe']);
 });
@@ -625,7 +628,7 @@ test('catalog rejects a role-only ready claim and permits an explicit read-only 
   assert.equal(app.container.querySelectorAll('a').length, 0);
   assert.match(app.container.textContent, /availability could not be checked/);
   app.button('Check connection').click();
-  await eventually(() => app.container.querySelectorAll('a').length === 3);
+  await eventually(() => app.container.querySelectorAll('a').length === 6);
   assert.deepEqual(app.actions.map(item => item.action), ['probe', 'probe']);
 });
 
@@ -706,7 +709,7 @@ test('external automation selection has one authoritative stage and preserves th
     initialDraft: { prompt: 'Draft <script> stays literal', feature: 'new-feature' } });
   const control = app.controller(), form = app.query('form'), prompt = app.query('textarea'), feature = app.query('input');
   assert.deepEqual(app.selections, [['update', { disabled: false }]]);
-  assert.equal(app.query('select'), null, 'The diagram replaces the dropdown without a second accessible selector');
+  assert.equal(app.query('[aria-label="SA automation"]'), null, 'The diagram replaces the dropdown without a second accessible selector');
   assert.equal(app.query('form').getAttribute('aria-label'), 'SA automation form');
   assert.equal(app.query('.osb-selected-automation').getAttribute('aria-label'), 'SA selected automation');
   await app.ready();
@@ -757,7 +760,7 @@ for (const role of ROLES) test(`${role} controlled form maps all three nodes to 
   }
 });
 
-for (const role of ROLES) test(`${role} home is an editable draft with no fake target or run storage access`, async t => {
+for (const role of ROLES.filter(role => role !== 'SA')) test(`${role} home is an editable draft with no fake target or run storage access`, async t => {
   const app = setup(t, { role, externalSelection: true, requirement: null, specId: null, trackStorage: true });
   const control = app.controller();
   assert.equal(control.getStage(), 'propose');
@@ -885,7 +888,7 @@ test('selected automation details never substitute another role or fabricate a m
   assert.match(app.query('.osb-selected-automation-definition').textContent, /Definition is not installed/);
   assert.equal(app.query('.osb-selected-automation-definition a'), null);
   app.controller().selectStage('apply');
-  assert.equal(app.query('.osb-selected-automation-definition a').getAttribute('href'), `/automations/${AUTOMATIONS[2].id}`);
+  assert.equal(app.query('.osb-selected-automation-definition a').getAttribute('href'), `/automations/${AUTOMATIONS.find(item => item.role === 'SA' && item.stage === 'apply').id}`);
   assert.equal(app.button('Run SA Apply').disabled, true);
   assert.equal(app.dispatched().length, 0);
 });
@@ -903,4 +906,55 @@ test('Propose binds a selected impacted application without allowing event repos
   assert.equal(ui.dispatched().length, 1);
   assert.equal(ui.dispatched()[0].input.application_id, 'two');
   assert(!Object.hasOwn(ui.dispatched()[0].input, 'repository'));
+});
+
+test('SA home submits a new requirement and multiple repository bindings with the entered prompt', async t => {
+  const app = setup(t, { role: 'SA', requirement: null, specId: null });
+  await app.ready();
+  app.query('[aria-label="New requirement ID"]').value = 'BOOK-007';
+  app.fill('Plan room booking with conflicts', 'booking');
+  const applications = ['Backend', 'Frontend', 'QA'].map((role, i) => ({ id: `app-${i}`, name: `Booking ${role}`, role,
+    repository: `https://github.com/example/app-${i}.git` }));
+  for (const [i, item] of applications.entries()) {
+    if (i) app.button('Add application').click();
+    const fields = app.container.querySelectorAll('.osb-application-binding')[i].querySelectorAll('input, select');
+    [...fields].forEach((field, index) => { field.value = item[['id', 'name', 'role', 'repository'][index]]; });
+  }
+  assert.equal(app.dispatched().length, 0);
+  app.submit(); await eventually(() => app.dispatched().length === 1);
+  const input = app.dispatched()[0].input;
+  assert.equal(input.requirement_id, 'BOOK-007');
+  assert.equal(input.spec_id, 'SA-BOOK-007-booking');
+  assert.equal(input.context_change, '');
+  assert.equal(input.request, 'Plan room booking with conflicts');
+  assert.deepEqual(input.applications, applications);
+});
+
+for (const role of ROLES) test(`${role} Review, Commit and Merge Request submit the selected target and snapshot only on Run`, async t => {
+  const reviewId = '11111111-1111-4111-8111-111111111111';
+  const target = role === 'SA' ? 'specs' : 'code';
+  const app = setup(t, { role, evidence: payload => output({ version: 1, kind: payload.action, data:
+    payload.action === 'history' ? { revisions: [], deliveries: [], reviews: [{ id: reviewId, target, file_count: 1, created_at: '2026-10-06T00:00:00Z' }] }
+      : { id: payload.input.id, context: Object.fromEntries(Object.entries(payload.input).filter(([key]) => !['id', 'kind'].includes(key))),
+        created_at: '2026-10-06T00:00:00Z', target, files: [] } }) });
+  await app.ready(); await eventually(() => app.query('[aria-label="Reviewed snapshot"]').options.length === 2);
+  assert.deepEqual([...app.query('[aria-label="Repository target"]').options].map(option => option.value), role === 'SA' ? ['specs'] : ['specs', 'code']);
+  for (const [index, stage] of ['review', 'commit', 'merge-request'].entries()) {
+    app.select(stage);
+    assert.equal(app.dispatched().length, index, 'Selecting a node never runs it');
+    if (stage !== 'review') {
+      app.submit(); await settled();
+      assert.equal(app.dispatched().length, index, 'Delivery requires an explicit reviewed snapshot');
+      app.query('[aria-label="Reviewed snapshot"]').value = reviewId;
+      app.query('[aria-label="Commit message / PR title"]').value = 'Implement booking';
+    }
+    app.submit(); await eventually(() => app.button('Refresh run status'));
+    const input = app.dispatched()[index].input;
+    assert.equal(input.target, target); assert.equal(input.stage, stage); assert.equal(input.request, '');
+    assert.equal(input.automation_id, AUTOMATIONS.find(row => row.role === role && row.stage === stage).id);
+    if (stage !== 'review') { assert.equal(input.review_id, reviewId); assert.equal(input.message, 'Implement booking'); }
+    app.button('Start another run').click();
+    app.query('[aria-label="Reviewed snapshot"]').value = '';
+  }
+  assert.ok(app.evidenceCalls.every(call => ['history', 'record'].includes(call.action)));
 });

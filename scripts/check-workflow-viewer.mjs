@@ -1,14 +1,17 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
+import { STAGES } from '../src/workflow-actions.js';
 
-const root = new URL('../docs/workflows/interactive/', import.meta.url);
+const root = new URL('../.archify/workflow-role-delivery-20261006-061811/', import.meta.url);
 const read = name => readFile(new URL(name, root));
 const [html, candidate, deliveryBytes, finalBytes] = await Promise.all([
-  read('role-workflow.html'), read('role-workflow.workflow.json'),
-  read('role-workflow.delivery.json'), read('review-2/role-workflow.finalize-summary.json'),
+  read('role-workflow.html'), read('candidate.json'),
+  read('role-workflow.delivery.json'), read('role-workflow.finalize-summary.json'),
 ]);
 const final = JSON.parse(finalBytes);
+assert.deepEqual(JSON.parse(candidate).nodes.map(node => node.id).sort(), STAGES.map(stage => `action-${stage}`).sort(),
+  'Every workflow node must map to one native role action.');
 assert.equal(final.status, 'pass', 'Archify finalization must pass.');
 assert.deepEqual(final.gates, {
   validate: 'pass', deliver: 'pass', check: 'pass', 'browser-check': 'pass',

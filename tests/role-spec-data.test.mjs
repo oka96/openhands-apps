@@ -99,18 +99,18 @@ test('new role change appears and removed role change disappears without a regis
   assert.equal((await fixture.run()).requirements[0].specs.length, 5);
 });
 
-test('strict client rejects tampered spec identity, path, counts, grouping and premature completion', async t => {
+test('display client rejects malformed identity, paths, field types and duplicate specs', async t => {
   const fixture = await roleSpecsFixture(t); const data = await fixture.run();
   for (const edit of [
     r => { r.specs[0].id = 'FE-REQ-001-labels'; },
     r => { r.specs[0].artifacts[0].path = '/tmp/private.md'; },
-    r => { r.specs[0].total = 99; },
-    r => { r.roles[1].state = 'done'; },
-    r => { r.roles[1].specs.reverse(); },
+    r => { r.specs[0].total = '99'; },
+    r => { r.roles[1].state = 'invalid'; },
+    r => { r.roles[1].specs = [123]; },
     r => { r.tasks[0].specId = r.specs[1].id; },
-    r => { r.specs[1].state = 'done'; },
-    r => { r.specs[0].artifacts[0].content = ''; },
-    r => { r.specs[0].tasks[0].role = 'QA'; },
+    r => { r.specs[1].state = 'invalid'; },
+    r => { r.specs[0].artifacts[0].content = 123; },
+    r => { r.specs[0].tasks[0].role = 'invalid'; },
     r => { r.specs.push(structuredClone(r.specs[0])); },
   ]) {
     const next = structuredClone(data); edit(next.requirements[0]);

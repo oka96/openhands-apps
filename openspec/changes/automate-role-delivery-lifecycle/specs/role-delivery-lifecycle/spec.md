@@ -20,6 +20,14 @@ SA SHALL create a new requirement from a prompt and application bindings. Each r
 - **THEN** automation creates its planning change without requiring a pre-existing requirement or changing automation source
 - **AND** downstream roles can derive specs from its validated bindings
 
+### Requirement: Implementation workflow with local validation
+Role Apps SHALL focus on planning, implementation, diff inspection and delivery. Code validation and regression execution SHALL remain local. The Apps SHALL NOT introduce a validation node, test dashboard or test-result delivery gate. QA SHALL implement regression code in its bound repository. Request, scope and Git snapshot integrity checks SHALL remain in automation.
+
+#### Scenario: Deliver implementation before local validation
+- **WHEN** a role has implemented changes and captured their current diff
+- **THEN** Commit or Merge Request is available without a test-result record
+- **AND** pending local validation is not represented as a passed check or a completed validation task
+
 ### Requirement: Durable specification revision diffs
 Every run that modifies a selected spec SHALL record its before/after diff, action, time and outcome. The owning role app SHALL list and display those revisions, including additions, deletions, task changes and partial edits from failed runs.
 

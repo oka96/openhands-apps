@@ -4,6 +4,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { build } from 'esbuild';
 import { JSDOM } from 'jsdom';
+import { STAGES } from '../src/workflow-actions.js';
 import { createWorkflowDocument, installWorkflowBridge } from '../src/workflow-viewer-bridge.js';
 
 const bundle = await build({
@@ -50,7 +51,7 @@ test('isolated viewer retains native runtime, its controls and canonical standal
   for (const view of ['in', 'out', 'reset']) assert.ok(frame.srcdoc.includes(`data-view="${view}"`));
   assert.match(frame.srcdoc, /Archify\.routeProbe =/);
   assert.match(frame.srcdoc, /Archify\.view =/);
-  assert.match(frame.srcdoc, /data-node-id="action-update"/);
+  for (const stage of STAGES) assert.ok(frame.srcdoc.includes(`data-node-id="action-${stage}"`));
   const original = '<!doctype html><html lang="en"><head></head><body>checked</body></html>';
   const derived = createWorkflowDocument(original, CONFIG);
   assert.equal(original, '<!doctype html><html lang="en"><head></head><body>checked</body></html>');
@@ -125,8 +126,8 @@ test('expanding and closing keep the same viewer document and restore focus', t 
 
 function childFixture(t) {
   const dom = new JSDOM(`<!doctype html><html data-theme="light"><body>
-    <script id="openspec-workflow-config" type="application/json">${JSON.stringify(CONFIG)}</script>
-    <div class="diagram-container"><svg>${['propose', 'update', 'apply'].map(stage =>
+    <script id="openspec-workflow-config" type="application/json">${JSON.stringify({ ...CONFIG, stages: STAGES })}</script>
+    <div class="diagram-container"><svg>${STAGES.map(stage =>
       `<g tabindex="0" aria-pressed="false" data-node-id="action-${stage}"><rect/></g>`).join('')}</svg></div>
     <button id="finder-result" data-node-id="action-update">Finder result</button>
     <button id="btn-zoom-in">Zoom in</button><button id="btn-focus-copy">Copy link</button>
