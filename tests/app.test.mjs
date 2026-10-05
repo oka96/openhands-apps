@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
+import { ACTIONS, STAGES } from '../src/workflow-actions.js';
 import { JSDOM } from 'jsdom';
 import path from 'node:path';
 import { build } from 'esbuild';
@@ -249,9 +250,9 @@ test('role specs show independent progress and exact selectable sources across r
 test('Role spec selects the exact target for the single inline automation form', async t => {
   const fixture = await roleSpecsFixture(t);
   const actions = [];
-  const automations = ROLE_IDS.flatMap((role, r) => ['propose', 'update', 'apply'].map((stage, s) => ({
-    id: `0f0f0f0f-1111-4444-8888-${String(r * 3 + s + 1).padStart(12, '0')}`,
-    name: `OpenSpec ${role} · ${stage[0].toUpperCase()}${stage.slice(1)}`, role, stage,
+  const automations = ROLE_IDS.flatMap((role, r) => STAGES.map((stage, s) => ({
+    id: `0f0f0f0f-1111-4444-8888-${String(r * STAGES.length + s + 1).padStart(12, '0')}`,
+    name: `OpenSpec ${role} · ${ACTIONS.find(action => action.id === stage).label}`, role, stage,
   })));
   const app = setup(t, { role: 'Frontend', path: 'requirements/REQ-001',
     storage: { 'openhands.apps.openspec-progress:v3:local-main:store': fixture.cwd },
@@ -777,9 +778,9 @@ test('switching role changes loads all four owned artifact paths without dispatc
 });
 
 function readyAutomations(actions, workspace = DEFAULT_STORE) {
-  const automations = ROLE_IDS.flatMap((role, r) => ['propose', 'update', 'apply'].map((stage, s) => ({
-    id: `0f0f0f0f-1111-4444-8888-${String(r * 3 + s + 1).padStart(12, '0')}`,
-    name: `OpenSpec ${role} · ${stage[0].toUpperCase()}${stage.slice(1)}`, role, stage,
+  const automations = ROLE_IDS.flatMap((role, r) => STAGES.map((stage, s) => ({
+    id: `0f0f0f0f-1111-4444-8888-${String(r * STAGES.length + s + 1).padStart(12, '0')}`,
+    name: `OpenSpec ${role} · ${ACTIONS.find(action => action.id === stage).label}`, role, stage,
   })));
   return async request => {
     if (request.path === '/server_info') return { runtime_services: { services: { automation: {

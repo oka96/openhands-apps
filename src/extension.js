@@ -268,7 +268,7 @@ function activateApp(host, app) {
         if (!reqs.length) {
           const empty = el('div', 'osb-empty');
           empty.append(el('h2', '', snapshot.requirements.length ? 'No matching requirements' : 'Your board is ready'),
-            el('p', 'osb-muted', snapshot.requirements.length ? 'Try another search or clear your filters.' : 'Add a role change under openspec/changes, for example SA-REQ-001-feature, then refresh.'));
+            el('p', 'osb-muted', snapshot.requirements.length ? 'Try another search or clear your filters.' : 'Open SA Workflow to propose a requirement and its impacted applications.'));
           if (snapshot.requirements.length) empty.append(button('Clear filters', 'osb-button', () => { filters.query = ''; filters.role = ''; drawBoard(); }));
           results.append(empty); return;
         }
@@ -335,7 +335,7 @@ function activateApp(host, app) {
           if (!specs.length) row.append(el('p', 'osb-muted', `No ${app.short} changes yet. Open this requirement to propose one.`));
           results.append(row);
         }
-        if (!reqs.length) results.append(el('p', 'osb-empty', snapshot.requirements.length ? 'No matching requirements.' : 'No requirements yet. Add a canonical role change to the store, then refresh.'));
+        if (!reqs.length) results.append(el('p', 'osb-empty', snapshot.requirements.length ? 'No matching requirements.' : 'No requirements yet. Use SA Propose to create the first requirement.'));
       }
       search.addEventListener('input', render); render();
     }

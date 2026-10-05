@@ -1,7 +1,7 @@
 import bridgeSource from './automation_bridge.py?raw';
+import { ACTIONS, STAGES } from './workflow-actions.js';
 
 const ROLES = ['SA', 'Frontend', 'Backend', 'QA'];
-const STAGES = ['propose', 'update', 'apply'];
 const STATES = ['PENDING', 'RUNNING', 'COMPLETED', 'FAILED', 'CANCELLED', 'SKIPPED'];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -19,6 +19,7 @@ const requireValue = (condition, message) => { if (!condition) throw new Error(m
 
 export function validateRoleInput(input) {
   const fields = ['stage', 'spec_store', 'requirement_id', 'context_change', 'role', 'spec_id', 'change', 'request'];
+  for (const key of ['applications', 'target', 'review_id', 'message']) if (object(input) && Object.hasOwn(input, key)) fields.push(key);
   if (object(input) && Object.hasOwn(input, 'application_id')) { fields.push('application_id'); requireValue(slug(input.application_id) && input.application_id.length <= 80, 'Choose an impacted application.'); }
   const withIds = object(input) && (Object.hasOwn(input, 'automation_id') || Object.hasOwn(input, 'request_id'));
   requireValue(exact(input, withIds ? [...fields, 'automation_id', 'request_id'] : fields), 'Invalid role automation input fields.');
@@ -27,12 +28,13 @@ export function validateRoleInput(input) {
   requireValue(typeof input.requirement_id === 'string' && input.requirement_id.length <= 160 &&
     /^[A-Z][A-Z0-9]*-[0-9]+$/.test(input.requirement_id), 'Choose a valid requirement.');
   const context = typeof input.context_change === 'string' && input.context_change.match(/^(SA|FE|BE|QA)-([A-Z][A-Z0-9]*-[0-9]+)-([a-z0-9]+(?:-[a-z0-9]+)*)$/);
-  requireValue(context && input.context_change.length <= 160 && context[2] === input.requirement_id && input.change === input.spec_id &&
+  const newRequirement = input.stage === 'propose' && input.role === 'SA' && input.context_change === '';
+  requireValue((newRequirement || context && input.context_change.length <= 160 && context[2] === input.requirement_id) && input.change === input.spec_id &&
     (input.stage === 'propose' || input.context_change === input.change), 'Role actions must use a canonical change in this requirement.');
   const prefix = `${{ SA: 'SA', Frontend: 'FE', Backend: 'BE', QA: 'QA' }[input.role]}-${input.requirement_id}-`;
   requireValue(typeof input.spec_id === 'string' && input.spec_id.length <= 160 && input.spec_id.startsWith(prefix) &&
     SLUG.test(input.spec_id.slice(prefix.length)), 'Choose a spec belonging to this requirement and role.');
-  requireValue(text(input.request, 10000) && (input.stage === 'apply' || input.request.trim().length > 0),
+  requireValue(text(input.request, 10000) && (!['propose', 'update'].includes(input.stage) || input.request.trim().length > 0),
     'Enter a prompt of at most 10000 characters. Propose and Update require a prompt.');
   if (withIds) requireValue(uuid(input.automation_id) && uuid(input.request_id), 'Invalid automation or request ID.');
   return input;
@@ -41,7 +43,18 @@ export function validateRoleInput(input) {
 function validateResponse(data, action, input) {
   const invalid = 'Invalid role automation response. Inspect native Automation history before retrying.';
   requireValue(object(data) && data.version === 1 && data.kind === action, invalid);
-  if (action === 'dispatch') {
+  if (action === 'history' || action === 'record') {
+    requireValue(exact(data, ['version', 'kind', 'data']) && object(data.data), invalid);
+    if (action === 'history') requireValue(['revisions', 'reviews', 'deliveries'].every(key => Array.isArray(data.data[key]) && data.data[key].length <= 50
+      && data.data[key].every(row => uuid(row.id) && text(row.created_at, 80))), invalid);
+    else {
+      const value = data.data;
+      requireValue(value.id === input.id && object(value.context) && ['spec_store', 'role', 'requirement_id', 'spec_id'].every(key => value.context[key] === input[key]), invalid);
+      if (value.files !== undefined) requireValue(Array.isArray(value.files) && value.files.length <= 200 && value.files.every(file => object(file)
+        && text(file.path, 4096) && text(file.diff, 6 * 1024 * 1024) && typeof file.binary === 'boolean'), invalid);
+      if (value.url !== undefined) requireValue(typeof value.url === 'string' && /^https:\/\/github\.com\/[A-Za-z0-9-]+\/[A-Za-z0-9_.-]+\/pull\/[0-9]+$/.test(value.url), invalid);
+    }
+  } else if (action === 'dispatch') {
     requireValue(exact(data, ['version', 'kind', 'run_id', 'automation_id', 'request_id']) && uuid(data.run_id) &&
       data.automation_id === input.automation_id && data.request_id === input.request_id, invalid);
   } else if (action === 'status') {
@@ -69,17 +82,17 @@ function validateResponse(data, action, input) {
     }
   } else {
     requireValue(exact(data, ['version', 'kind', 'ready', 'automations', 'configuration', 'message']) &&
-      typeof data.ready === 'boolean' && text(data.message, 600) && Array.isArray(data.automations) && data.automations.length <= 12, invalid);
+      typeof data.ready === 'boolean' && text(data.message, 600) && Array.isArray(data.automations) && data.automations.length <= ROLES.length * STAGES.length, invalid);
     const config = data.configuration;
     validateConfiguration(config, true, invalid);
     const ids = new Set(), stages = new Set();
     for (const row of data.automations) {
       const pair = `${row.role}:${row.stage}`;
       requireValue(exact(row, ['id', 'name', 'stage', 'role']) && uuid(row.id) && STAGES.includes(row.stage) && ROLES.includes(row.role) &&
-        row.name === `OpenSpec ${row.role} · ${row.stage[0].toUpperCase()}${row.stage.slice(1)}` && !ids.has(row.id) && !stages.has(pair), invalid);
+        row.name === `OpenSpec ${row.role} · ${ACTIONS.find(action => action.id === row.stage)?.label}` && !ids.has(row.id) && !stages.has(pair), invalid);
       ids.add(row.id); stages.add(pair);
     }
-    requireValue(!data.ready || data.automations.length === 12, invalid);
+    requireValue(!data.ready || data.automations.length === ROLES.length * STAGES.length, invalid);
     requireValue(action !== 'setup' || data.ready, invalid);
   }
   return data;
@@ -93,12 +106,16 @@ function validateConfiguration(config, repository, message) {
 }
 
 export async function callRoleAutomation(host, action, input) {
-  requireValue(['probe', 'setup', 'dispatch', 'status'].includes(action), 'Unsupported role automation action.');
+  requireValue(['probe', 'setup', 'dispatch', 'status', 'history', 'record'].includes(action), 'Unsupported role automation action.');
   if (action === 'dispatch') {
     validateRoleInput(input);
     requireValue(uuid(input.automation_id) && uuid(input.request_id), 'A submission needs automation and request IDs.');
   } else if (action === 'status') {
     requireValue(exact(input, ['run_id', 'automation_id']) && uuid(input.run_id) && uuid(input.automation_id), 'Invalid run status request.');
+  } else if (action === 'history' || action === 'record') {
+    requireValue(exact(input, ['spec_store', 'role', 'requirement_id', 'spec_id', ...(action === 'record' ? ['kind', 'id'] : [])])
+      && path(input.spec_store) && ROLES.includes(input.role) && text(input.requirement_id, 160) && text(input.spec_id, 160), 'Choose a role specification to view its evidence.');
+    if (action === 'record') requireValue(['revisions', 'reviews', 'deliveries'].includes(input.kind) && uuid(input.id), 'Choose a valid evidence record.');
   } else requireValue(input === undefined, 'Unexpected role automation inputs.');
   let info, home;
   try {
@@ -126,7 +143,7 @@ export async function callRoleAutomation(host, action, input) {
     } });
   } catch { throw new Error('The Automation request outcome is unknown. Inspect native Automation history before retrying.'); }
   requireValue(object(output) && output.order === 0 && Number.isInteger(output.exit_code) && typeof output.stdout === 'string' &&
-    new TextEncoder().encode(output.stdout).length <= 128 * 1024,
+    new TextEncoder().encode(output.stdout).length <= (action === 'record' ? 6 * 1024 * 1024 : 128 * 1024),
     'Incomplete Automation output. Inspect native Automation history before retrying.');
   let data;
   try { data = JSON.parse(output.stdout); } catch { throw new Error('Invalid Automation output. Inspect native Automation history before retrying.'); }

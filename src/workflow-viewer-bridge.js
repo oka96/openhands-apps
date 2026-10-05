@@ -1,4 +1,4 @@
-const STAGES = ['propose', 'update', 'apply'];
+import { STAGES } from './workflow-actions.js';
 
 /** Strict protocol: no target, prompt, arbitrary command or nested payload. */
 export function isWorkflowMessage(data, config, kinds) {
@@ -20,7 +20,7 @@ export function isWorkflowMessage(data, config, kinds) {
 // Keep this function self-contained: it runs in an opaque, isolated frame.
 export function installWorkflowBridge() {
   const config = JSON.parse(document.getElementById('openspec-workflow-config').textContent);
-  const stages = ['propose', 'update', 'apply'];
+  const stages = config.stages;
   const canvas = document.querySelector('.diagram-container');
   const svg = canvas?.querySelector(':scope > svg');
   if (!svg || !window.Archify?.view) return;
@@ -90,7 +90,7 @@ export function installWorkflowBridge() {
 /** Derive the app view without modifying Archify's checked standalone HTML. */
 export function createWorkflowDocument(html, config) {
   const csp = '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src \'unsafe-inline\'; style-src \'unsafe-inline\'; img-src data: blob:; font-src data:; connect-src \'none\'; base-uri \'none\'; form-action \'none\'">';
-  const encoded = JSON.stringify(config).replaceAll('<', '\\u003c');
+  const encoded = JSON.stringify({ ...config, stages: STAGES }).replaceAll('<', '\\u003c');
   const bridge = `<script id="openspec-workflow-config" type="application/json">${encoded}</script><script>(${installWorkflowBridge.toString()})();</script>`;
   // The selection highlight is scoped to the HTML viewer. Archify's canonical
   // export stylesheet collector intentionally excludes this host-only selector.

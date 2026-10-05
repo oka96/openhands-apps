@@ -1,8 +1,8 @@
 import workflowHtml from '../docs/workflows/interactive/role-workflow.html?raw';
 import { createWorkflowDocument, isWorkflowMessage } from './workflow-viewer-bridge.js';
 
-const STAGES = ['propose', 'update', 'apply'];
-const label = stage => stage[0].toUpperCase() + stage.slice(1);
+import { ACTIONS, STAGES } from './workflow-actions.js';
+const label = stage => ACTIONS.find(action => action.id === stage)?.label;
 
 /** Keep Archify's complete viewer isolated from the Canvas host and its data. */
 export function mountWorkflowNavigation({ container, role, onSelect }) {

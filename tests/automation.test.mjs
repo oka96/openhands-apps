@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { ACTIONS, STAGES } from '../src/workflow-actions.js';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { build } from 'esbuild';
@@ -23,8 +24,8 @@ const config = { workspace: '/Users/oka/Desktop/openhands-demo', spec_store: bas
   store_id: 'openspec-store', repository: '/Users/oka/Desktop/openhands-automation',
   profile: 'codex-acp-demo', skill_root: '/Users/oka/Desktop/openhands-demo', timeout_seconds: 1800 };
 const info = (kind = 'probe', ready = false) => ({ version: 1, kind, ready, configuration: config,
-  automations: ready ? ['SA', 'Frontend', 'Backend', 'QA'].flatMap((role, r) => ['propose', 'update', 'apply'].map((stage, index) => ({
-    id: AUTO.slice(0, -2) + (r * 3 + index).toString(16).padStart(2, "0"), stage, role, name: `OpenSpec ${role} · ${stage[0].toUpperCase()}${stage.slice(1)}`,
+  automations: ready ? ['SA', 'Frontend', 'Backend', 'QA'].flatMap((role, r) => STAGES.map((stage, index) => ({
+    id: AUTO.slice(0, -2) + (r * STAGES.length + index).toString(16).padStart(2, "0"), stage, role, name: `OpenSpec ${role} · ${ACTIONS.find(action => action.id === stage).label}`,
   }))) : [], message: 'Connect automations.' });
 const dispatched = { version: 1, kind: 'dispatch', automation_id: AUTO, request_id: REQUEST, run_id: RUN };
 const status = { version: 1, kind: 'status', automation_id: AUTO, run_id: RUN, status: 'RUNNING', conversation_id: null, error: null, report: null };

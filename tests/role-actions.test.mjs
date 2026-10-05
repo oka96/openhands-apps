@@ -23,9 +23,11 @@ const STORE = '/Users/oka/Desktop/openspec-store';
 const PROJECT = '/Users/oka/Desktop/openhands-demo';
 const ROLES = ['SA', 'Frontend', 'Backend', 'QA'];
 const STAGES = ['propose', 'update', 'apply'];
-const AUTOMATIONS = ROLES.flatMap((role, r) => STAGES.map((stage, index) => ({
-  id: `0f0f0f0f-1111-4444-8888-${String(r * 3 + index + 1).padStart(12, "0")}`,
-  name: `OpenSpec ${role} · ${stage[0].toUpperCase()}${stage.slice(1)}`, stage, role,
+const ALL_ACTIONS = JSON.parse(await readFile(new URL('../../openhands-automation/runtime/actions.json', import.meta.url), 'utf8'));
+const ALL_STAGES = ALL_ACTIONS.map(action => action.id);
+const AUTOMATIONS = ROLES.flatMap((role, r) => ALL_STAGES.map((stage, index) => ({
+  id: `0f0f0f0f-1111-4444-8888-${String(r * ALL_STAGES.length + index + 1).padStart(12, "0")}`,
+  name: `OpenSpec ${role} · ${ALL_ACTIONS.find(action => action.id === stage).label}`, stage, role,
 })));
 const RUN_ID = '05ad810c-bcc0-409b-902d-1bc78023c22b';
 const CONVERSATION_ID = '6f3d24ee-3348-4d84-991d-955359e50a29';
@@ -86,6 +88,7 @@ function setup(t, options = {}) {
       const payload = JSON.parse(Buffer.from(encoded, 'base64').toString('utf8'));
       assert.deepEqual(payload.service, SERVICE);
       assert.equal(payload.home, '/Users/test');
+      if (payload.action === 'history') return output({ version: 1, kind: 'history', data: { revisions: [], reviews: [], deliveries: [] } });
       actions.push(payload);
       if (options.action) {
         const handled = await options.action(payload, actions.length);
@@ -155,7 +158,7 @@ test('inline role controls default to Apply and automatically probe without conn
   assert.equal(app.query('details, summary'), null);
   assert.equal(app.query('.osb-role-actions').getAttribute('aria-label'), 'Run OpenSpec automation for SA');
   assert.equal(app.query('.osb-role-actions-body').firstElementChild, app.query('form'));
-  assert.equal(app.container.querySelectorAll('select').length, 1, 'Role spec is supplied by the parent');
+  assert.equal(app.container.querySelectorAll('select').length, 4, 'Role spec is supplied by the parent');
   assert.equal(app.query('[aria-label="SA automation"]').value, 'apply');
   assert.equal(app.query('[aria-label="SA new feature name"]').parentElement.hidden, true);
   assert.equal(app.query('[aria-label="SA prompt"]').required, false);
@@ -577,7 +580,7 @@ for (const role of ROLES) test(`${role} catalog shows only its three existing de
   assert.deepEqual(links.map(link => link.getAttribute('href')), expected.map(item => `/automations/${item.id}`));
   for (const link of links) link.click();
   assert.deepEqual(app.navigation, expected.map(item => `/automations/${item.id}`));
-  assert.match(app.query('.osb-automation-connection').textContent, /all twelve role automations verified/);
+  assert.match(app.query('.osb-automation-connection').textContent, /all 24 role automations verified/);
   assert.equal(app.button('Connect shared automations').hidden, true);
   assert.equal(app.query('form, select, input, textarea'), null);
   assert.deepEqual(app.actions.map(item => item.action), ['probe']);
@@ -587,7 +590,7 @@ for (const role of ROLES) test(`${role} catalog shows only its three existing de
 test('catalog setup is explicitly shared across twelve definitions and checking only probes', async t => {
   const app = setup(t, { catalog: true, ready: false });
   await app.ready();
-  assert.match(app.container.textContent, /all twelve existing role automations/);
+  assert.match(app.container.textContent, /24 role automations/);
   assert.match(app.query('.osb-automation-connection').textContent, /needs setup or an update/);
   assert.equal(app.button('Connect shared automations').hidden, false);
   app.button('Connect shared automations').click();
@@ -605,7 +608,7 @@ test('catalog reserves missing role slots without borrowing another role definit
     automations: AUTOMATIONS.filter(item => item.role !== 'Backend' || item.stage === 'apply'),
   }) });
   await app.ready();
-  assert.equal(app.container.querySelectorAll('.osb-automation-item').length, 3);
+  assert.equal(app.container.querySelectorAll('.osb-automation-item').length, 6);
   assert.equal(app.container.querySelectorAll('a').length, 1);
   assert.match(app.query('a').getAttribute('href'), new RegExp(AUTOMATIONS.find(item => item.role === 'Backend' && item.stage === 'apply').id));
   assert.equal([...app.container.querySelectorAll('.osb-automation-item')].filter(row => row.textContent.includes('Definition is not installed')).length, 2);
@@ -629,7 +632,7 @@ test('catalog rejects a role-only ready claim and permits an explicit read-only 
 test('detail catalog hides duplicate connection controls and still probes without writing state', async t => {
   const app = setup(t, { catalog: true, role: 'QA', showConnection: false });
   await app.ready();
-  assert.equal(app.container.querySelectorAll('.osb-automation-item').length, 3);
+  assert.equal(app.container.querySelectorAll('.osb-automation-item').length, 6);
   assert.equal(app.query('button'), null);
   assert.deepEqual(app.actions.map(item => item.action), ['probe']);
   assert.deepEqual(app.stored(), []);

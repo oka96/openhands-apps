@@ -288,3 +288,19 @@
 .osb-applications { margin: 10px 0; padding: 10px 12px; border-left: 2px solid var(--osb-accent, #6b8afd); background: rgba(100, 130, 190, .06); overflow-wrap: anywhere; }
 .osb-application { margin-top: 5px; font-size: 12px; }
 .osb-card-applications { font-size: 11px; opacity: .8; margin: 4px 0; overflow-wrap: anywhere; }
+.osb-delivery-fields { border: 1px solid var(--osb-border, #dbe2ed); border-radius: 10px; padding: 16px; display: grid; gap: 12px; }
+.osb-delivery-fields[hidden] { display: none; }
+.osb-evidence { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--osb-border, #dbe2ed); }
+.osb-evidence select { max-width: 100%; width: 100%; padding: 10px; }
+.osb-evidence .osb-artifact-tabs { margin: 12px 0; }
+.osb-diff-file { margin: 12px 0; border: 1px solid var(--osb-border, #dbe2ed); border-radius: 8px; overflow: hidden; }
+.osb-diff-file summary { padding: 10px; overflow-wrap: anywhere; font-weight: 600; cursor: pointer; }
+.osb-diff { margin: 0; padding: 12px; overflow: auto; max-height: 440px; font: 12px/1.7 ui-monospace, monospace; white-space: pre-wrap; overflow-wrap: anywhere; background: #f5f7fa; color: #243044; }
+.osb-diff span { display: block; min-height: 1.7em; }
+.osb-diff-add { background: #e3f5e8; color: #165c2d; }
+.osb-diff-remove { background: #fee8e7; color: #852a27; }
+.osb-receipt { overflow-wrap: anywhere; font-family: ui-monospace, monospace; }
+.osb-intake { border: 1px solid #dbe2ed; border-radius: 10px; padding: 16px; display: grid; gap: 12px; }
+.osb-intake[hidden] { display: none; }
+.osb-application-binding { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 12px; margin: 12px 0; border: 1px solid #dbe2ed; border-radius: 8px; }
+@media (max-width: 640px) { .osb-application-binding { grid-template-columns: 1fr; } }
