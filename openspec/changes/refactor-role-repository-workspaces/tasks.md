@@ -12,3 +12,6 @@
 
 ## 4. Integration
 - [x] 4.1 Run all repository checks and inspect the meeting-room board and role screens; record evidence and limitations in verification.md.
+
+## 5. SA conversation workspace correction
+- [x] 5.1 Run SA actions from the registered spec store while preserving code-scope audits and historical reports; verify Git identity, conversation creation, all role bundles and native reconnection.

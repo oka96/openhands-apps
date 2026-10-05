@@ -61,7 +61,7 @@ Merge Request automation SHALL create a unique branch, commit reviewed changes, 
 - **AND** retrying the same review reconciles that branch and opens or returns one PR without a second commit
 
 ### Requirement: SA remains design only
-SA SHALL use its planning workspace and SHALL never implement, commit or publish application code. Its delivery actions SHALL target only its own specification scope. Other roles SHALL be confined to their single bound code repository and selected spec.
+SA SHALL use the registered specification store root as its workspace and SHALL never implement, commit or publish application code. Its delivery actions SHALL target only its own specification scope. Other roles SHALL be confined to their single bound code repository and selected spec.
 
 #### Scenario: Reject SA code delivery
 - **WHEN** an SA event selects a code review or code delivery target

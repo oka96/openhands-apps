@@ -1,5 +1,17 @@
 # Verification — 2026-10-06
 
+## SA workspace correction — 2026-10-06
+
+The original empty SA planning directory inherited the `openhands-automation` Git repository from its parent. SA could edit absolute store paths, but its conversation's files and Git panels identified the wrong repository. Automation commit `f2be92a` now uses `/Users/oka/Desktop/openspec-store` as the effective workspace for every SA action. The configured managed parent still supplies locks and code-scope audit coverage; downstream checkout routing is unchanged. Historical planning-directory reports remain readable and existing conversations retain their original workspace.
+
+- Automation: all 148 Python tests passed. New coverage verifies SA Propose/Update/Apply workspace and reports, real Git root/origin for all six SA actions, the conversation creation request, historical report compatibility and rejection of foreign workspaces. Existing SA code-change rejection and downstream clone/reuse tests pass.
+- All 24 generated bundles match their sources. The installed shared connection was updated and visibly confirmed all 24 automations ready, retaining the existing SA Update and Review automation IDs.
+- Native deterministic SA Review run `aa3f7ca9-e454-4529-bb91-d620e832c13b` completed and reported both Code project and Spec store as `/Users/oka/Desktop/openspec-store`. It captured the user's four current SA date/time specification edits in snapshot `0752796d-89bb-4fd0-8f3d-3595c62c6738`; it did not edit or commit those files or start a model conversation.
+- Apps: all nine active changes passed strict OpenSpec validation. No App runtime or UI package changes were needed. The role page is left with SA Update enabled.
+- Live evidence: [SA store workspace](evidence/sa-store-workspace.jpg). New model conversation creation was verified by the request contract test; no additional live model Update was submitted.
+
+## Initial implementation verification
+
 The role repository refactor is implemented locally in OpenSpec Store, OpenHands Apps and OpenHands Automation. The meeting-room specifications are ready for automation, as requested. No role agent was started, no sample application was implemented, and no changes were pushed. This implementation change remains active for inspection.
 
 ## Automated checks

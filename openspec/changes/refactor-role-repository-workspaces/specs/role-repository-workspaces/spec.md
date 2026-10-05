@@ -35,7 +35,13 @@ Before a downstream conversation starts, automation SHALL create a managed works
 - **THEN** it reuses the matching checkout without resetting or pulling those files
 
 ### Requirement: SA design-only execution
-Every SA action SHALL run in a spec-only workspace without cloning code repositories. SA Apply SHALL verify design and handoff tasks only. It SHALL never authorize implementation changes, and scope audits SHALL reject observed code modifications.
+Every SA action SHALL use the registered specification store root as its workspace without cloning code repositories. SA Apply SHALL verify design and handoff tasks only. It SHALL never authorize implementation changes, and scope audits SHALL reject observed code modifications.
+
+#### Scenario: Update specifications in the correct repository
+- **WHEN** SA Update creates a conversation
+- **THEN** its LocalWorkspace working directory is the registered specification store root and its Git repository is the spec store
+- **AND** the run report records that workspace, while historical SA planning-directory reports remain readable
+- **AND** existing conversations retain the workspace they were created with
 
 #### Scenario: Apply solution design
 - **WHEN** SA Apply runs
