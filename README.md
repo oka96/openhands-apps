@@ -152,9 +152,12 @@ Connect also retires the seven legacy stage and three generic role definitions
 after verifying they have no active runs; existing conversations remain available.
 The panel shows the configured code project and spec store.
 Connection checks are read-only, and Automation remains editable while they run.
-Previous run links remain visible without locking Automation. After a submission,
-use **Start another run** to enable another explicit submission; changing Automation
-alone does not start a run or discard its history.
+Previous run links remain visible without locking Automation. A confirmed finished
+run automatically enables the next explicit submission. Loading the page or selecting
+the next action checks a saved run's current status; **Refresh run status** checks again without starting work.
+Pending, running or unknown results keep submission locked. For an uncertain result,
+inspect native history before using **Start another run**. Changing Automation alone
+does not start a run or discard its history.
 
 Choose an automation and supply one prompt:
 
@@ -273,7 +276,7 @@ Build once, then add each package in **Customize → Apps → Add app**:
 
 Leave Ref and Repository path blank for these local directories. Each manifest
 and self-contained `extension.js` is at its package root. Install and enable all
-five packages at the same release version, currently 0.10.3.
+five packages at the same release version, currently 0.12.1.
 
 Installation leaves the app disabled. Review the source, then choose
 **Enable trusted app**. The app runs inside Canvas and uses its authenticated

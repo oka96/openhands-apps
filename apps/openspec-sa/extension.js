@@ -710,6 +710,7 @@ function mountRoleEvidence({ host, container, context, onReviews }) {
 
 // src/role-actions.js
 var UUID2 = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+var FINISHED_STATES = /* @__PURE__ */ new Set(["COMPLETED", "FAILED", "CANCELLED", "SKIPPED"]);
 var SKILLS = Object.fromEntries(ACTIONS.map((action) => [action.id, action.label]));
 var SKILL_NAMES = Object.fromEntries(ACTIONS.map((action) => [action.id, action.kind === "agent" ? action.skill : "Deterministic automation"]));
 var ROLES3 = ["SA", "Frontend", "Backend", "QA"];
@@ -760,6 +761,12 @@ function mountRoleActions({
     const value = JSON.parse(localStorage.getItem(key));
     if (value && UUID2.test(value.request_id) && UUID2.test(value.automation_id) && SKILLS[value.stage] && typeof value.spec_id === "string" && value.spec_id.startsWith(prefix) && (!value.run_id || UUID2.test(value.run_id))) last = value;
   } catch {
+  }
+  function previousRunFinished() {
+    return Boolean(lastStatus && FINISHED_STATES.has(lastStatus.status));
+  }
+  function previousRunBlocks() {
+    return Boolean(last) && !previousRunFinished();
   }
   function remember(value) {
     lastStatus = null;
@@ -990,7 +997,7 @@ Spec store: ${config.spec_store}
 Workflow resources: ${config.skill_root}`;
     }
     const matches = connection?.configuration?.spec_store === workspace;
-    submit.disabled = !supportedTarget || busy || !connection?.ready || !matches || Boolean(last) || stage !== "propose" && !specId;
+    submit.disabled = !supportedTarget || busy || !connection?.ready || !matches || previousRunBlocks() || stage !== "propose" && !specId;
     skill.disabled = change.disabled = prompt.disabled = !supportedTarget && !home || dispatching;
     setup.disabled = probe.disabled = busy;
     setup.hidden = Boolean(connection?.ready);
@@ -1018,7 +1025,7 @@ Workflow resources: ${config.skill_root}`;
     promptLabel.hidden = deterministic;
     prompt.required = ["propose", "update"].includes(stage);
     promptTitle.textContent = prompt.required ? "Prompt" : "Prompt (optional)";
-    help.textContent = newRequirement && stage === "propose" ? "Describe the requirement and add its impacted repositories. SA creates the contract and hands implementation to the other roles." : home ? "Choose a requirement and a Role spec to run an existing-spec action, or select Propose to create an SA requirement." : !supportsSpecs ? "Load a store with canonical role change folders before running automations." : !supportedTarget ? "The selected spec is missing or does not belong to this role. Choose a current Role spec before running an automation." : stage !== "propose" && !specId ? "Choose an existing Role spec for Update or Apply, or select Propose to add a new spec." : externalSelection ? "" : HELP[stage];
+    help.textContent = newRequirement && stage === "propose" ? "Describe the requirement and add its impacted repositories. SA creates the contract and hands implementation to the other roles." : home ? "Choose a requirement and a Role spec to run an existing-spec action, or select Propose to create an SA requirement." : !supportsSpecs ? "Load a store with canonical role change folders before running automations." : !supportedTarget ? "The selected spec is missing or does not belong to this role. Choose a current Role spec before running an automation." : stage !== "propose" && !specId ? "Choose an existing Role spec for Update or Apply, or select Propose to add a new spec." : previousRunBlocks() ? last.run_id ? "The previous run is still active or its status has not been confirmed. Use Refresh run status below to check it." : "The previous request has an unknown outcome. Inspect native history before choosing Start another run below." : externalSelection ? "" : HELP[stage];
     help.hidden = !help.textContent;
     submit.textContent = `Run ${role.id} ${SKILLS[stage]}`;
     panel.setAttribute("aria-busy", String(busy));
@@ -1032,6 +1039,7 @@ Workflow resources: ${config.skill_root}`;
     if (disposed || dispatching || typeof value !== "string" || !Object.hasOwn(SKILLS, value)) return false;
     stage = value;
     update();
+    if (previousRunBlocks()) refreshStatus();
     return true;
   }
   function renderLast(message2) {
@@ -1056,7 +1064,7 @@ Workflow resources: ${config.skill_root}`;
     another.disabled = busy;
     result.append(another);
     result.append(el("small", "osb-request-ref", `Request ${last.request_id}`));
-    result.append(el("p", "osb-muted", "Choose Start another run to enable a new submission. Changing Automation does not start work."));
+    result.append(el("p", "osb-muted", previousRunFinished() ? "The previous run has finished. You can submit the selected automation; this result stays visible until then." : "Refresh run status to check whether the previous run has finished. If its result is unknown, inspect native history before choosing Start another run."));
     if (lastStatus) {
       const report = lastStatus.report, outcome = report?.outcome;
       const labels = {
@@ -1137,7 +1145,7 @@ Spec store: ${report.configuration.spec_store}`));
   requirementId.addEventListener("input", update);
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    if (!supportedTarget || busy || last || disposed || !connection?.ready || connection.configuration.spec_store !== workspace || stage !== "propose" && !specId) return;
+    if (!supportedTarget || busy || previousRunBlocks() || disposed || !connection?.ready || connection.configuration.spec_store !== workspace || stage !== "propose" && !specId) return;
     let input;
     try {
       if (stage === "propose" && specs.some((item) => item.id === prefix + change.value.trim())) throw new Error("This spec already exists. Choose a new feature name.");
@@ -1187,7 +1195,7 @@ Spec store: ${report.configuration.spec_store}`));
   });
   renderLast();
   update();
-  connect("probe");
+  connect("probe").then(() => refreshStatus());
   const cleanup = () => {
     disposed = true;
     evidence?.dispose();

@@ -34,3 +34,9 @@ Verified 2026-10-06. This change is implemented and remains active for inspectio
 ## Verification limits
 
 The meeting-room demo was left ready for the user to run, as requested. No sample application was implemented and no demo agent run, commit or PR was started to test this change. Model behavior is exercised through controlled fixtures; publication uses real local Git plus mocked GitHub responses. Actual publication uses the user's existing Git/gh authentication. Unrun demo validation remains unchecked and is performed locally.
+
+## Finished-run recovery correction — 2026-10-06
+
+The user's Chrome session retained a completed Review reference and therefore kept Run SA Update disabled. An earlier manual reset in Codex's separate browser did not reset Chrome's local reference. The form now checks saved native status on mount and when selecting the next action, automatically releases confirmed finished runs, and preserves their visible evidence. Pending, running, unavailable and mismatched results remain locked with an explanation beside the form.
+
+The added regression tests failed before the fix. `npm run check` now passes **258 tests**, five App package checks and nine strict OpenSpec validations. All five Apps were reinstalled and enabled at **0.12.1**. In Chrome, read-only Review run `b0ed91a6-09a1-42b1-b973-085a6c6d0323` completed with zero changed files. Selecting Update automatically read its result and enabled Run SA Update without pressing Start another run or Refresh run status. Reloading also restored the completed result and enabled submission. No Update agent was started. Screenshot: `/Users/oka/.codex/visualizations/2026/10/05/01a10ddb-8678-72e2-a50c-f284bfc5f261/sa-update-chrome-fixed.jpg`.

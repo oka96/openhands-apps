@@ -336,6 +336,42 @@ test('status refresh exposes native run and conversation links without changing 
   assert.equal(app.dispatched().length, 1);
 });
 
+for (const role of ROLES) test(`${role} can submit Update after a completed Review without dismissing its result`, async t => {
+  const app = setup(t, { role });
+  await app.ready(); app.select('review'); app.submit();
+  await eventually(() => app.button('Refresh run status'));
+  app.select('update'); app.fill('Clarify the existing contract');
+  assert.equal(app.button(`Run ${role} Update`).disabled, true, 'Unverified previous run still blocks submission');
+  await app.ready();
+  assert.equal(app.button(`Run ${role} Update`).disabled, false);
+  assert.match(app.query('.osb-run-status').textContent, /completed/);
+  assert.equal(app.dispatched().length, 1, 'Reading status never starts the next action');
+  assert.equal(app.actions.filter(item => item.action === 'status').length, 1, 'Selecting the next action checks the previous run automatically');
+  app.submit(); await eventually(() => app.dispatched().length === 2);
+  assert.equal(app.dispatched()[1].input.stage, 'update');
+  assert.equal(app.dispatched()[1].input.request, 'Clarify the existing contract');
+  assert.notEqual(app.dispatched()[1].input.request_id, app.dispatched()[0].input.request_id);
+  assert.equal(app.button(`Run ${role} Update`).disabled, true, 'The new request owns the lock');
+});
+
+test('remount checks a saved run and releases only confirmed terminal statuses', async t => {
+  for (const status of ['COMPLETED', 'FAILED', 'CANCELLED', 'SKIPPED', 'PENDING', 'RUNNING', 'unavailable']) await t.test(status, async child => {
+    const app = setup(child, { action: payload => {
+      if (payload.action !== 'status') return;
+      if (status === 'unavailable') throw new Error('Status unavailable');
+      return output({ version: 1, kind: 'status', automation_id: payload.input.automation_id,
+        run_id: payload.input.run_id, status, error: null, conversation_id: null, report: null });
+    } });
+    await app.ready(); app.submit(); await eventually(() => app.button('Refresh run status'));
+    const history = app.stored();
+    app.dispose(); app.mount({ initialStage: 'update' }); await app.ready();
+    assert.equal(app.actions.filter(item => item.action === 'status').length, 1, 'Reload must read the saved native run');
+    assert.equal(app.dispatched().length, 1, 'Reload never retries or starts work');
+    assert.equal(app.button('Run SA Update').disabled, ['PENDING', 'RUNNING', 'unavailable'].includes(status));
+    assert.deepEqual(app.stored(), history, 'Keep the prior result reference visible');
+  });
+});
+
 test('failed run displays literal error evidence and missing conversation does not create a link', async t => {
   const app = setup(t, { action: payload => payload.action === 'status' ? output({
     version: 1, kind: 'status', automation_id: payload.input.automation_id, run_id: payload.input.run_id,
@@ -433,7 +469,7 @@ test('business outcomes preserve lifecycle, original findings, audit details and
     assert.match(app.query('.osb-automation-target').textContent, /codex-acp-demo/);
     if (kind === 'execution_error') assert.match(app.container.textContent, /Agent reported: blocked.*Audit: Missing correction reason/s);
     assert.equal(app.query('img'), null);
-    assert.equal(app.button('Run SA Apply').disabled, true);
+    assert.equal(app.button('Run SA Apply').disabled, false, 'A finished native run does not lock the next action');
     assert.equal(app.dispatched().length, 1);
   });
 });
@@ -451,6 +487,7 @@ test('foreign spec report is not rendered inside a saved run', async t => {
   app.button('Refresh run status').click();
   await eventually(() => app.container.textContent.includes('do not match this submitted spec'));
   assert.doesNotMatch(app.container.textContent, /Foreign private/);
+  assert.equal(app.button('Run SA Apply').disabled, true, 'A mismatched status cannot release the lock');
 });
 
 test('an earlier run retains its original spec identity when that spec is removed', async t => {
@@ -461,7 +498,7 @@ test('an earlier run retains its original spec identity when that spec is remove
   app.mount({ specId: 'SA-REQ-004-second', requirement: { ...REQUIREMENT, specs: REQUIREMENT.specs.filter(spec => spec.id !== 'SA-REQ-004-first') } });
   await app.ready();
   assert.match(app.query('[role="status"]').textContent, /SA-REQ-004-first/);
-  assert.equal(app.button('Run SA Apply').disabled, true);
+  assert.equal(app.button('Run SA Apply').disabled, false, 'The completed earlier run does not block the current spec');
   assert.equal(app.dispatched().length, 1);
 });
 
@@ -494,8 +531,11 @@ test('legacy metadata stays read-only and empty roles can explicitly propose a c
   });
 });
 
-test('previous run evidence does not lock automation or draft editing, including after remount', async t => {
-  const app = setup(t);
+test('running run evidence does not lock automation or draft editing, including after remount', async t => {
+  const app = setup(t, { action: payload => payload.action === 'status' ? output({
+    version: 1, kind: 'status', automation_id: payload.input.automation_id, run_id: payload.input.run_id,
+    status: 'RUNNING', error: null, conversation_id: null, report: null,
+  }) : undefined });
   await app.ready(); app.select('propose'); app.fill('Plan reminders', 'reminders'); app.submit();
   await eventually(() => app.query('a'));
   const history = app.stored();
@@ -541,7 +581,7 @@ test('connection probes, setup and status checks leave automation and draft inpu
     app.query('input').dispatchEvent(new app.dom.window.Event('input'));
     assert.equal(app.query('input').parentElement.hidden, false);
     assert.equal(app.query('textarea').required, true);
-    assert.match(app.query('.osb-skill-help').textContent, /Create a role specification/);
+    assert.match(app.query('.osb-skill-help').textContent, action === 'status' ? /Refresh run status/ : /Create a role specification/);
     assert.equal(app.button('Run SA Propose').disabled, true);
     app.submit();
     const input = app.actions.find(item => item.action === action).input;
@@ -700,7 +740,7 @@ test('role run references survive movement from Kanban to the separately install
   app.mount(); await app.ready();
   assert.deepEqual(app.stored(), stored);
   assert.ok(app.button('Refresh run status'));
-  assert.equal(app.button('Run Frontend Apply').disabled, true);
+  assert.equal(app.button('Run Frontend Apply').disabled, false, 'The saved run is checked after moving between Apps');
   assert.equal(app.dispatched().length, 1);
 });
 

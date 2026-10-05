@@ -22,3 +22,7 @@
 - [x] 4.2 Rebuild and install the Apps, reconnect 24 native automations preserving existing history, and verify live role/diff screens without starting the meeting-room demo implementation.
 
 See [implementation evidence](implementation-evidence.md) for checks, native run references and verification limits.
+
+## 5. Finished-run form recovery
+
+- [x] 5.1 Release submission after confirmed terminal native status, check saved runs on mount and retain their evidence; test next-action submission, reload, running/unknown status and identity mismatch, then install and verify the corrected Apps in the user's Chrome tab.

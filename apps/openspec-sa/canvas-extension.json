@@ -2,7 +2,7 @@
   "schema_version": 1,
   "name": "openspec-sa",
   "display_name": "SA Workflow",
-  "version": "0.12.0",
+  "version": "0.12.1",
   "entrypoint": "extension.js",
   "contributes": {
     "pages": [

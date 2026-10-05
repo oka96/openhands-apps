@@ -3,6 +3,7 @@ import { ACTIONS } from './workflow-actions.js';
 import { mountRoleEvidence } from './role-evidence.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const FINISHED_STATES = new Set(['COMPLETED', 'FAILED', 'CANCELLED', 'SKIPPED']);
 const SKILLS = Object.fromEntries(ACTIONS.map(action => [action.id, action.label]));
 const SKILL_NAMES = Object.fromEntries(ACTIONS.map(action => [action.id, action.kind === 'agent' ? action.skill : 'Deterministic automation']));
 const ROLES = ['SA', 'Frontend', 'Backend', 'QA'];
@@ -115,6 +116,8 @@ export function mountRoleActions({ host, container, navigate, workspace, require
       && typeof value.spec_id === 'string' && value.spec_id.startsWith(prefix)
       && (!value.run_id || UUID.test(value.run_id))) last = value;
   } catch { /* Optional storage. */ }
+  function previousRunFinished() { return Boolean(lastStatus && FINISHED_STATES.has(lastStatus.status)); }
+  function previousRunBlocks() { return Boolean(last) && !previousRunFinished(); }
   function remember(value) {
     lastStatus = null;
     last = value;
@@ -262,7 +265,7 @@ export function mountRoleActions({ host, container, navigate, workspace, require
         `Managed workspaces: ${config.workspace}\nSpec store: ${config.spec_store}\nWorkflow resources: ${config.skill_root}`;
     }
     const matches = connection?.configuration?.spec_store === workspace;
-    submit.disabled = !supportedTarget || busy || !connection?.ready || !matches || Boolean(last) || (stage !== 'propose' && !specId);
+    submit.disabled = !supportedTarget || busy || !connection?.ready || !matches || previousRunBlocks() || (stage !== 'propose' && !specId);
     skill.disabled = change.disabled = prompt.disabled = (!supportedTarget && !home) || dispatching;
     setup.disabled = probe.disabled = busy;
     setup.hidden = Boolean(connection?.ready);
@@ -290,6 +293,9 @@ export function mountRoleActions({ host, container, navigate, workspace, require
       : !supportsSpecs ? 'Load a store with canonical role change folders before running automations.'
       : !supportedTarget ? 'The selected spec is missing or does not belong to this role. Choose a current Role spec before running an automation.'
       : stage !== 'propose' && !specId ? 'Choose an existing Role spec for Update or Apply, or select Propose to add a new spec.'
+      : previousRunBlocks() ? last.run_id
+        ? 'The previous run is still active or its status has not been confirmed. Use Refresh run status below to check it.'
+        : 'The previous request has an unknown outcome. Inspect native history before choosing Start another run below.'
       : externalSelection ? '' : HELP[stage];
     help.hidden = !help.textContent;
     submit.textContent = `Run ${role.id} ${SKILLS[stage]}`;
@@ -303,6 +309,7 @@ export function mountRoleActions({ host, container, navigate, workspace, require
     if (disposed || dispatching || typeof value !== 'string' || !Object.hasOwn(SKILLS, value)) return false;
     stage = value;
     update();
+    if (previousRunBlocks()) refreshStatus();
     return true;
   }
   function renderLast(message) {
@@ -319,7 +326,9 @@ export function mountRoleActions({ host, container, navigate, workspace, require
     const another = button('Start another run', () => { if (busy || disposed) return; remember(null); renderLast(); update(); });
     another.disabled = busy; result.append(another);
     result.append(el('small', 'osb-request-ref', `Request ${last.request_id}`));
-    result.append(el('p', 'osb-muted', 'Choose Start another run to enable a new submission. Changing Automation does not start work.'));
+    result.append(el('p', 'osb-muted', previousRunFinished()
+      ? 'The previous run has finished. You can submit the selected automation; this result stays visible until then.'
+      : 'Refresh run status to check whether the previous run has finished. If its result is unknown, inspect native history before choosing Start another run.'));
     if (lastStatus) {
       const report = lastStatus.report, outcome = report?.outcome;
       const labels = { completed: 'Completed', blocked: outcome?.blocker_type === 'dependency' ? 'Waiting for dependency' : 'Blocked · action needed',
@@ -381,7 +390,7 @@ export function mountRoleActions({ host, container, navigate, workspace, require
   requirementId.addEventListener('input', update);
   form.addEventListener('submit', async event => {
     event.preventDefault();
-    if (!supportedTarget || busy || last || disposed || !connection?.ready || connection.configuration.spec_store !== workspace ||
+    if (!supportedTarget || busy || previousRunBlocks() || disposed || !connection?.ready || connection.configuration.spec_store !== workspace ||
       (stage !== 'propose' && !specId)) return;
     let input;
     try {
@@ -411,7 +420,8 @@ export function mountRoleActions({ host, container, navigate, workspace, require
       if (!disposed) { update(); for (const control of result.querySelectorAll('button')) control.disabled = false; }
     }
   });
-  renderLast(); update(); connect('probe');
+  renderLast(); update();
+  connect('probe').then(() => refreshStatus());
   const cleanup = () => { disposed = true; evidence?.dispose(); panel.remove(); };
   cleanup.selectStage = selectStage;
   cleanup.getStage = () => stage;

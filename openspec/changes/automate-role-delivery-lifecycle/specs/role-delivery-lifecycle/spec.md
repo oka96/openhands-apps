@@ -74,3 +74,9 @@ Each role app SHALL provide prompt-based planning and implementation, source pre
 - **WHEN** a user selects Review and inspects its returned diff
 - **THEN** they can select Commit or Merge Request, supply a message and submit the chosen reviewed snapshot
 - **AND** the app displays the native run, actual outcome and commit or PR receipt
+
+#### Scenario: Continue after a finished run
+- **WHEN** the role app confirms that the previous native run is completed, failed, cancelled or skipped
+- **THEN** the selected next action can be submitted without dismissing the previous result
+- **AND** loading the page or selecting the next action checks the saved run's current status without starting work
+- **AND** pending, running, unknown or mismatched run status does not automatically release the submission lock
