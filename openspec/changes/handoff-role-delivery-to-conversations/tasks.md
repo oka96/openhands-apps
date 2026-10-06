@@ -13,4 +13,4 @@
 
 ## 3. Integration
 - [x] 3.1 Reconnect shared native definitions and install updated Apps; verify an existing conversation link and empty-spec behavior in the browser without starting an agent.
-- [ ] 3.2 Commit and push changed repositories to main and verify remote commit IDs.
+- [x] 3.2 Commit and push changed repositories to main and verify remote commit IDs.

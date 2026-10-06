@@ -20,3 +20,12 @@ Verified on 2026-10-06 using Node.js 24.20.0.
 - No agent run was started during these checks.
 
 Local screenshot: `/Users/oka/.codex/visualizations/2026/10/05/01a10ddb-8678-72e2-a50c-f284bfc5f261/role-conversation-handoff.png`.
+
+## Publication
+
+Pushed both implementation commits to `origin/main` and verified the remote refs match the local commits:
+
+- Apps: `8e4ad51f31a38e8d4cf2c41c1aea905cc5234a48`.
+- Automation: `6de08ca62a1878897c3001de6a7280fca1df2bf6`.
+
+The OpenSpec store had no changes from this implementation. The change remains active for inspection.
