@@ -113,7 +113,7 @@ test('malformed or mismatched connection and dispatch responses fail closed', as
     { ...dispatched, secret: 'private' }]) await assert.rejects(callRoleAutomation(host(data), 'dispatch', baseInput));
 });
 
-test('role app presentation does not weaken shared 24-definition readiness validation', async () => {
+test('role app presentation does not weaken shared 12-definition readiness validation', async () => {
   const complete = info('probe', true);
   const roleOnly = { ...complete, automations: complete.automations.filter(row => row.role === 'Frontend') };
   await assert.rejects(callRoleAutomation(host(roleOnly), 'probe'), /Invalid role automation response/);

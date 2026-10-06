@@ -58,7 +58,7 @@ test('switching tabs during initial history fetch retains history and renders th
   const app = setup(t, payload => payload.action === 'history' ? pending.promise : {
     id: ids[2], context, created_at, stage: 'merge-request', state: 'complete', commit: 'a'.repeat(40), branch: 'codex/booking', url: 'https://github.com/example/backend/pull/7',
   });
-  app.button('Delivery receipts').click();
+  app.button('Past delivery receipts').click();
   pending.resolve({ revisions: [], reviews: [], deliveries: [metadata(ids[2])] });
   await eventually(() => app.container.querySelector('a'));
   assert.equal(app.container.querySelector('a').href, 'https://github.com/example/backend/pull/7');

@@ -1,3 +1,5 @@
+> Review, Commit, Merge Request and the six-node workflow are superseded by `handoff-role-delivery-to-conversations`. Other requirements remain applicable.
+
 # Proposal
 
 ## Why

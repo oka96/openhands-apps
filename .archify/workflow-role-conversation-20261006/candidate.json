@@ -1,0 +1,143 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Role implementation workflow",
+    "output": ".archify/workflow-role-conversation-20261006/role-workflow.html",
+    "locale": "en",
+    "animation": "none",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/oka96/openhands-automation.git",
+      "revision": "6de08ca62a1878897c3001de6a7280fca1df2bf6",
+      "link_mode": "local-only"
+    }
+  },
+  "lanes": [
+    {
+      "id": "role-work",
+      "label": "Plan and implement"
+    }
+  ],
+  "mainPath": [
+    "action-propose",
+    "action-update",
+    "action-apply"
+  ],
+  "nodes": [
+    {
+      "id": "action-propose",
+      "lane": "role-work",
+      "col": 0,
+      "type": "backend",
+      "label": "Propose",
+      "sublabel": "Create a role spec",
+      "width": 156,
+      "height": 68,
+      "sources": [
+        {
+          "path": "runtime/actions.json",
+          "line": 2,
+          "end_line": 8,
+          "label": "Propose action"
+        },
+        {
+          "path": "prompts/role-propose.md",
+          "line": 3,
+          "end_line": 17,
+          "label": "Plan one role change"
+        }
+      ]
+    },
+    {
+      "id": "action-update",
+      "lane": "role-work",
+      "col": 1,
+      "type": "backend",
+      "label": "Update",
+      "sublabel": "Revise the selected spec",
+      "width": 168,
+      "height": 68,
+      "sources": [
+        {
+          "path": "runtime/actions.json",
+          "line": 9,
+          "end_line": 15,
+          "label": "Update action"
+        },
+        {
+          "path": "prompts/role-update.md",
+          "line": 3,
+          "end_line": 19,
+          "label": "Revise scoped planning"
+        }
+      ]
+    },
+    {
+      "id": "action-apply",
+      "lane": "role-work",
+      "col": 2,
+      "type": "backend",
+      "label": "Apply",
+      "sublabel": "Code or SA handoff",
+      "width": 156,
+      "height": 68,
+      "sources": [
+        {
+          "path": "runtime/actions.json",
+          "line": 16,
+          "end_line": 22,
+          "label": "Apply action"
+        },
+        {
+          "path": "prompts/role-apply.md",
+          "line": 3,
+          "end_line": 26,
+          "label": "Implement; validation stays local"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "planning-revision",
+      "from": "action-propose",
+      "to": "action-update",
+      "label": "Refine",
+      "role": "main"
+    },
+    {
+      "id": "revision-implementation",
+      "from": "action-update",
+      "to": "action-apply",
+      "label": "Implement",
+      "role": "main"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Explicit automation",
+      "items": [
+        "Each role has these three actions. Select one, enter a prompt and press Run.",
+        "Arrows show a typical flow; they never start another action."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Continue in the conversation",
+      "items": [
+        "Use Open conversation in the role workspace to review changes and handle commit or merge.",
+        "Spec revision history remains available. Code validation stays local."
+      ]
+    },
+    {
+      "dot": "slate",
+      "title": "Role boundaries",
+      "items": [
+        "SA prepares specifications across applications and hands implementation to Backend and Frontend.",
+        "Backend, Frontend and QA each work in one bound repository."
+      ]
+    }
+  ]
+}

@@ -1,5 +1,6 @@
 import { callRoleAutomation, validateRoleInput } from './automation.js';
 import { ACTIONS } from './workflow-actions.js';
+import { mountRoleConversation } from './role-conversation.js';
 import { mountRoleEvidence } from './role-evidence.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -7,7 +8,7 @@ const FINISHED_STATES = new Set(['COMPLETED', 'FAILED', 'CANCELLED', 'SKIPPED'])
 const SKILLS = Object.fromEntries(ACTIONS.map(action => [action.id, action.label]));
 const SKILL_NAMES = Object.fromEntries(ACTIONS.map(action => [action.id, action.kind === 'agent' ? action.skill : 'Deterministic automation']));
 const ROLES = ['SA', 'Frontend', 'Backend', 'QA'];
-const SHARED_SETUP_HELP = 'Connect the 24 role automations: Propose, Update, Review, Apply, Commit and Merge Request for SA, Frontend, Backend and QA. Setup starts no agent.';
+const SHARED_SETUP_HELP = 'Connect the 12 role automations: Propose, Update and Apply for SA, Frontend, Backend and QA. Setup starts no agent.';
 const HELP = Object.fromEntries(ACTIONS.map(action => [action.id, action.description]));
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -39,7 +40,7 @@ export function mountRoleAutomationCatalog({ host, container, navigate, role, sh
   const panel = el('section', 'osb-automation-catalog');
   panel.setAttribute('aria-label', `${role} related automations`);
   panel.append(el('h2', '', 'Related automations'),
-    el('p', 'osb-muted', `These six native automations belong to ${role}. Open their history here; submit an automation from a requirement’s role workspace.`));
+    el('p', 'osb-muted', `These three native automations belong to ${role}. Open their history here; submit an automation from a requirement’s role workspace.`));
   const status = el('p', 'osb-automation-connection'); status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
   const list = el('ul', 'osb-automation-list');
   const setup = button('Connect shared automations', () => connect('setup'));
@@ -79,7 +80,7 @@ export function mountRoleAutomationCatalog({ host, container, navigate, role, sh
       const value = await callRoleAutomation(host, action);
       if (disposed) return;
       connection = value;
-      status.textContent = value.ready ? 'Shared connection ready · all 24 role automations verified.'
+      status.textContent = value.ready ? 'Shared connection ready · all 12 role automations verified.'
         : 'Shared connection needs setup or an update. Existing history remains available.';
     } catch (error) {
       if (!disposed) {
@@ -208,39 +209,19 @@ export function mountRoleActions({ host, container, navigate, workspace, require
   prompt.rows = 4; prompt.maxLength = 10000; prompt.placeholder = 'Describe the work or constraints for this role…'; promptLabel.append(prompt);
   if (typeof initialDraft?.prompt === 'string') prompt.value = initialDraft.prompt;
   if (typeof initialDraft?.feature === 'string') change.value = initialDraft.feature;
-  const deliveryFields = el('fieldset', 'osb-delivery-fields');
-  deliveryFields.append(el('legend', '', 'Review and deliver'));
-  const targetLabel = el('label', 'osb-skill-field'); targetLabel.append(el('span', 'osb-label', 'Repository target'));
-  const repositoryTarget = el('select'); repositoryTarget.setAttribute('aria-label', 'Repository target');
-  for (const [value, label] of [['specs', 'Selected specifications'], ...(role.id === 'SA' ? [] : [['code', 'Bound code repository']])]) {
-    const option = el('option', '', label); option.value = value; repositoryTarget.append(option);
-  }
-  repositoryTarget.value = role.id === 'SA' ? 'specs' : 'code'; targetLabel.append(repositoryTarget);
-  const reviewLabel = el('label', 'osb-skill-field'); reviewLabel.append(el('span', 'osb-label', 'Reviewed snapshot'));
-  const reviewSelect = el('select'); reviewSelect.setAttribute('aria-label', 'Reviewed snapshot'); reviewLabel.append(reviewSelect);
-  const messageLabel = el('label', 'osb-skill-field'); messageLabel.append(el('span', 'osb-label', 'Commit message / PR title'));
-  const message = el('input'); message.maxLength = 500; message.setAttribute('aria-label', 'Commit message / PR title'); messageLabel.append(message);
-  deliveryFields.append(targetLabel, reviewLabel, messageLabel);
-  let reviews = [], evidence = null;
-  function drawReviews() {
-    const selectedReview = reviewSelect.value; reviewSelect.replaceChildren();
-    const empty = el('option', '', 'Run Review and inspect its diff'); empty.value = ''; reviewSelect.append(empty);
-    for (const row of reviews.filter(row => row.target === repositoryTarget.value)) {
-      const option = el('option', '', `${new Date(row.created_at).toLocaleString()} · ${row.file_count} files · ${row.id.slice(0, 8)}`);
-      option.value = row.id; reviewSelect.append(option);
-    }
-    if (reviews.some(row => row.id === selectedReview && row.target === repositoryTarget.value)) reviewSelect.value = selectedReview;
-  }
-  repositoryTarget.addEventListener('change', drawReviews);
+  let evidence = null, conversation = null;
   const help = el('p', 'osb-skill-help');
   const submit = el('button', 'osb-button osb-primary'); submit.type = 'submit';
-  form.append(externalSelection ? selected : skillLabel, ...(newRequirement ? [intake] : []), changeLabel, ...(appChoices.length && role.id !== 'SA' ? [appLabel] : []), specPreview, promptLabel, deliveryFields, help, submit);
+  form.append(externalSelection ? selected : skillLabel, ...(newRequirement ? [intake] : []), changeLabel, ...(appChoices.length && role.id !== 'SA' ? [appLabel] : []), specPreview, promptLabel, help, submit);
   const result = el('div', 'osb-run-result'); result.setAttribute('role', 'status'); result.setAttribute('aria-live', 'polite');
   body.append(form, connectionText, target, launchHelp, connectionActions, setupHelp, result);
   panel.append(body); container.append(panel);
-  if (specId && requirement) evidence = mountRoleEvidence({ host, container: body,
-    context: { spec_store: workspace, role: role.id, requirement_id: requirement.id, spec_id: specId },
-    onReviews: rows => { reviews = rows; drawReviews(); } });
+  if (specId && requirement) {
+    const context = { spec_store: workspace, role: role.id, requirement_id: requirement.id, spec_id: specId };
+    conversation = mountRoleConversation({ host, container: body, context, navigate });
+    body.prepend(conversation.element);
+    evidence = mountRoleEvidence({ host, container: body, context });
+  }
 
   function update() {
     if (disposed) return;
@@ -280,13 +261,6 @@ export function mountRoleActions({ host, container, navigate, workspace, require
     specPreview.hidden = stage !== 'propose';
     specPreview.textContent = newRequirement ? `New spec: SA-${requirementId.value.trim() || '<requirement>'}-${change.value.trim() || '<feature>'}`
       : home ? 'Choose a requirement to preview the new spec name.' : `New spec: ${prefix}${change.value.trim() || '<feature>'}`;
-    const deterministic = ['review', 'commit', 'merge-request'].includes(stage);
-    deliveryFields.hidden = !deterministic;
-    const delivery = ['commit', 'merge-request'].includes(stage);
-    reviewLabel.hidden = messageLabel.hidden = !delivery;
-    reviewSelect.required = message.required = delivery;
-    repositoryTarget.disabled = reviewSelect.disabled = message.disabled = dispatching;
-    promptLabel.hidden = deterministic;
     prompt.required = ['propose', 'update'].includes(stage); promptTitle.textContent = prompt.required ? 'Prompt' : 'Prompt (optional)';
     help.textContent = newRequirement && stage === 'propose' ? 'Describe the requirement and add its impacted repositories. SA creates the contract and hands implementation to the other roles.'
       : home ? 'Choose a requirement and a Role spec to run an existing-spec action, or select Propose to create an SA requirement.'
@@ -346,7 +320,7 @@ export function mountRoleActions({ host, container, navigate, workspace, require
         result.append(el('p', 'osb-muted', 'Detailed outcome is unavailable for this run. Open native history or its conversation for the reason.'));
       }
       if (lastStatus.error) result.append(el('p', 'osb-run-error', lastStatus.error));
-      if (lastStatus.conversation_id) result.append(link('Open conversation →', `/conversations/${lastStatus.conversation_id}`));
+      if (lastStatus.conversation_id) result.append(link('Open conversation →', `/conversations/${lastStatus.conversation_id}?backend=${encodeURIComponent(host.backend.id)}`));
       if (lastStatus.status === 'COMPLETED') result.append(el('p', 'osb-muted', 'Refresh the requirement to read any source changes.'));
     }
   }
@@ -360,7 +334,7 @@ export function mountRoleActions({ host, container, navigate, workspace, require
       connection = value;
       const matches = value.configuration.spec_store === workspace;
       connectionText.textContent = !matches ? 'This store is not the configured automation store. Update role-workflow.json and reconnect.'
-        : value.ready ? 'Shared connection ready · all 24 role automations verified.' : value.message;
+        : value.ready ? 'Shared connection ready · all 12 role automations verified.' : value.message;
       if (action === 'setup') onSetupComplete?.();
     } catch (error) {
       if (!disposed) { connection = null; target.textContent = ''; connectionText.textContent = error.message || 'Cannot connect to automations.'; }
@@ -377,8 +351,8 @@ export function mountRoleActions({ host, container, navigate, workspace, require
           status.report.configuration.spec_store !== workspace)) throw new Error('Run details do not match this submitted spec. Inspect native history.');
       lastStatus = status;
       renderLast();
-      if (['COMPLETED', 'FAILED'].includes(status.status)) evidence?.refresh(attempt.stage === 'review' ? 'reviews'
-        : ['commit', 'merge-request'].includes(attempt.stage) ? 'deliveries' : 'revisions');
+      conversation?.refresh();
+      if (['COMPLETED', 'FAILED'].includes(status.status)) evidence?.refresh('revisions');
     } catch (error) { if (!disposed) renderLast(error.message || 'Cannot read run status.'); }
     finally {
       busy = false;
@@ -401,9 +375,7 @@ export function mountRoleActions({ host, container, navigate, workspace, require
         context_change: newRequirement ? '' : stage === 'propose' ? (specId || requirement.specs[0]?.change) : specId, role: role.id,
         change: chosenSpec, spec_id: chosenSpec,
         ...(newRequirement ? { applications: appRows.map(row => Object.fromEntries(Object.entries(row.fields).map(([key, field]) => [key, field.value.trim()]))) } : {}),
-        request: ['review', 'commit', 'merge-request'].includes(stage) ? '' : prompt.value,
-        ...(['review', 'commit', 'merge-request'].includes(stage) ? { target: repositoryTarget.value } : {}),
-        ...(['commit', 'merge-request'].includes(stage) ? { review_id: reviewSelect.value, message: message.value } : {}),
+        request: prompt.value,
         ...(stage === 'propose' && appChoices.length && role.id !== 'SA' ? { application_id: application.value } : {}) });
     } catch (error) { renderLast(error.message); return; }
     const automation = connection.automations.find(item => item.stage === stage && item.role === role.id);
@@ -422,7 +394,7 @@ export function mountRoleActions({ host, container, navigate, workspace, require
   });
   renderLast(); update();
   connect('probe').then(() => refreshStatus());
-  const cleanup = () => { disposed = true; evidence?.dispose(); panel.remove(); };
+  const cleanup = () => { disposed = true; conversation?.dispose(); evidence?.dispose(); panel.remove(); };
   cleanup.selectStage = selectStage;
   cleanup.getStage = () => stage;
   cleanup.getDraft = () => ({ stage, prompt: prompt.value, feature: change.value });

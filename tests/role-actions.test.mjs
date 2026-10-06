@@ -88,6 +88,7 @@ function setup(t, options = {}) {
       const payload = JSON.parse(Buffer.from(encoded, 'base64').toString('utf8'));
       assert.deepEqual(payload.service, SERVICE);
       assert.equal(payload.home, '/Users/test');
+      if (payload.action === 'conversation') return options.conversation ? options.conversation(payload) : output({ version: 1, kind: 'conversation', context: payload.input, conversation: null });
       if (['history', 'record'].includes(payload.action)) {
         evidenceCalls.push(payload);
         return options.evidence ? options.evidence(payload) : output({ version: 1, kind: 'history', data: { revisions: [], reviews: [], deliveries: [] } });
@@ -160,8 +161,8 @@ test('inline role controls default to Apply and automatically probe without conn
   const app = setup(t);
   assert.equal(app.query('details, summary'), null);
   assert.equal(app.query('.osb-role-actions').getAttribute('aria-label'), 'Run OpenSpec automation for SA');
-  assert.equal(app.query('.osb-role-actions-body').firstElementChild, app.query('form'));
-  assert.equal(app.container.querySelectorAll('select').length, 4, 'Role spec is supplied by the parent');
+  assert.equal(app.query('.osb-role-actions-body').firstElementChild, app.query('.osb-conversation-handoff'));
+  assert.equal(app.container.querySelectorAll('select').length, 2, 'Role spec is supplied by the parent');
   assert.equal(app.query('[aria-label="SA automation"]').value, 'apply');
   assert.equal(app.query('[aria-label="SA new feature name"]').parentElement.hidden, true);
   assert.equal(app.query('[aria-label="SA prompt"]').required, false);
@@ -224,7 +225,7 @@ test('invalid Propose and Update inputs cannot dispatch; switching automations u
     app.select(stage); app.fill(prompt, change); app.submit();
     await settled();
     assert.equal(app.dispatched().length, 0, `Rejected ${stage}: ${change}`);
-    assert.ok(app.query('[role="status"]').textContent.length, 'Show actionable validation feedback');
+    assert.ok(app.query('.osb-run-result').textContent.length, 'Show actionable validation feedback');
   }
   app.select('update');
   assert.match(app.query('.osb-skill-help').textContent, /Revise the selected specification/);
@@ -330,15 +331,15 @@ test('status refresh exposes native run and conversation links without changing 
   assert.deepEqual(app.actions.map(item => item.action), ['probe', 'dispatch', 'status']);
   assert.match(app.container.textContent, /Refresh the requirement/);
   assert.deepEqual(REQUIREMENT, before);
-  const conversation = [...app.container.querySelectorAll('a')].find(node => node.textContent.includes('Open conversation'));
+  const conversation = [...app.container.querySelectorAll('.osb-run-result a')].find(node => node.textContent.includes('Open conversation'));
   conversation.click();
-  assert.equal(app.navigation.at(-1), `/conversations/${CONVERSATION_ID}`);
+  assert.equal(app.navigation.at(-1), `/conversations/${CONVERSATION_ID}?backend=local-main`);
   assert.equal(app.dispatched().length, 1);
 });
 
-for (const role of ROLES) test(`${role} can submit Update after a completed Review without dismissing its result`, async t => {
+for (const role of ROLES) test(`${role} can submit Update after a completed Apply without dismissing its result`, async t => {
   const app = setup(t, { role });
-  await app.ready(); app.select('review'); app.submit();
+  await app.ready(); app.select('apply'); app.submit();
   await eventually(() => app.button('Refresh run status'));
   app.select('update'); app.fill('Clarify the existing contract');
   assert.equal(app.button(`Run ${role} Update`).disabled, true, 'Unverified previous run still blocks submission');
@@ -414,12 +415,12 @@ test('the bound sibling spec is immutable and prior history never overrides the 
   await app.ready(); app.select('update'); app.fill('Refine the second spec'); app.submit();
   await eventually(() => app.dispatched().length === 1 && app.query('a'));
   assert.equal(app.dispatched()[0].input.spec_id, 'FE-REQ-004-second');
-  assert.match(app.query('[role="status"]').textContent, /FE-REQ-004-second/);
+  assert.match(app.query('.osb-run-result').textContent, /FE-REQ-004-second/);
   app.dispose(); app.mount({ specId: 'FE-REQ-004-first' }); await app.ready();
   assert.equal(app.query('[aria-label="Frontend spec"]'), null);
   assert.equal(app.query('[aria-label="Frontend automation"]').value, 'apply');
   assert.equal(app.query('[aria-label="Frontend automation"]').disabled, false);
-  assert.match(app.query('[role="status"]').textContent, /FE-REQ-004-second/);
+  assert.match(app.query('.osb-run-result').textContent, /FE-REQ-004-second/);
   assert.equal(app.dispatched().length, 1);
   app.button('Start another run').click(); app.submit();
   await eventually(() => app.dispatched().length === 2 && app.query('a'));
@@ -497,7 +498,7 @@ test('an earlier run retains its original spec identity when that spec is remove
   app.dispose();
   app.mount({ specId: 'SA-REQ-004-second', requirement: { ...REQUIREMENT, specs: REQUIREMENT.specs.filter(spec => spec.id !== 'SA-REQ-004-first') } });
   await app.ready();
-  assert.match(app.query('[role="status"]').textContent, /SA-REQ-004-first/);
+  assert.match(app.query('.osb-run-result').textContent, /SA-REQ-004-first/);
   assert.equal(app.button('Run SA Apply').disabled, false, 'The completed earlier run does not block the current spec');
   assert.equal(app.dispatched().length, 1);
 });
@@ -549,13 +550,13 @@ test('running run evidence does not lock automation or draft editing, including 
     app.select(stage); app.fill('A new draft', 'other-feature');
     assert.equal(app.query('input').parentElement.hidden, stage !== 'propose');
     assert.equal(app.query('textarea').required, stage !== 'apply');
-    assert.match(app.query('[role="status"]').textContent, /SA-REQ-004-reminders/);
+    assert.match(app.query('.osb-run-result').textContent, /SA-REQ-004-reminders/);
     assert.equal(app.button(`Run SA ${stage[0].toUpperCase()}${stage.slice(1)}`).disabled, true);
     app.submit(); await settled();
     assert.equal(app.dispatched().length, 1);
     assert.deepEqual(app.stored(), history);
   }
-  assert.match(app.query('[role="status"]').textContent, /Start another run/);
+  assert.match(app.query('.osb-run-result').textContent, /Start another run/);
   app.button('Start another run').click();
   assert.equal(app.button('Run SA Apply').disabled, false);
   assert.equal(app.dispatched().length, 1);
@@ -612,7 +613,7 @@ test('missing, stale and wrong-role bound targets cannot dispatch any automation
   }
 });
 
-for (const role of ROLES) test(`${role} catalog shows only its six existing definitions and history without dispatch`, async t => {
+for (const role of ROLES) test(`${role} catalog shows only its three existing definitions and history without dispatch`, async t => {
   const app = setup(t, { catalog: true, role });
   await app.ready();
   const rows = [...app.container.querySelectorAll('.osb-automation-item')];
@@ -623,17 +624,17 @@ for (const role of ROLES) test(`${role} catalog shows only its six existing defi
   assert.deepEqual(links.map(link => link.getAttribute('href')), expected.map(item => `/automations/${item.id}`));
   for (const link of links) link.click();
   assert.deepEqual(app.navigation, expected.map(item => `/automations/${item.id}`));
-  assert.match(app.query('.osb-automation-connection').textContent, /all 24 role automations verified/);
+  assert.match(app.query('.osb-automation-connection').textContent, /all 12 role automations verified/);
   assert.equal(app.button('Connect shared automations').hidden, true);
   assert.equal(app.query('form, select, input, textarea'), null);
   assert.deepEqual(app.actions.map(item => item.action), ['probe']);
   assert.deepEqual(app.stored(), []);
 });
 
-test('catalog setup is explicitly shared across 24 definitions and checking only probes', async t => {
+test('catalog setup is explicitly shared across 12 definitions and checking only probes', async t => {
   const app = setup(t, { catalog: true, ready: false });
   await app.ready();
-  assert.match(app.container.textContent, /24 role automations/);
+  assert.match(app.container.textContent, /12 role automations/);
   assert.match(app.query('.osb-automation-connection').textContent, /needs setup or an update/);
   assert.equal(app.button('Connect shared automations').hidden, false);
   app.button('Connect shared automations').click();
@@ -651,10 +652,10 @@ test('catalog reserves missing role slots without borrowing another role definit
     automations: AUTOMATIONS.filter(item => item.role !== 'Backend' || item.stage === 'apply'),
   }) });
   await app.ready();
-  assert.equal(app.container.querySelectorAll('.osb-automation-item').length, 6);
+  assert.equal(app.container.querySelectorAll('.osb-automation-item').length, 3);
   assert.equal(app.container.querySelectorAll('a').length, 1);
   assert.match(app.query('a').getAttribute('href'), new RegExp(AUTOMATIONS.find(item => item.role === 'Backend' && item.stage === 'apply').id));
-  assert.equal([...app.container.querySelectorAll('.osb-automation-item')].filter(row => row.textContent.includes('Definition is not installed')).length, 5);
+  assert.equal([...app.container.querySelectorAll('.osb-automation-item')].filter(row => row.textContent.includes('Definition is not installed')).length, 2);
   assert.doesNotMatch(app.container.textContent, /OpenSpec (SA|Frontend|QA) ·/);
   assert.deepEqual(app.actions.map(item => item.action), ['probe']);
 });
@@ -668,14 +669,14 @@ test('catalog rejects a role-only ready claim and permits an explicit read-only 
   assert.equal(app.container.querySelectorAll('a').length, 0);
   assert.match(app.container.textContent, /availability could not be checked/);
   app.button('Check connection').click();
-  await eventually(() => app.container.querySelectorAll('a').length === 6);
+  await eventually(() => app.container.querySelectorAll('a').length === 3);
   assert.deepEqual(app.actions.map(item => item.action), ['probe', 'probe']);
 });
 
 test('detail catalog hides duplicate connection controls and still probes without writing state', async t => {
   const app = setup(t, { catalog: true, role: 'QA', showConnection: false });
   await app.ready();
-  assert.equal(app.container.querySelectorAll('.osb-automation-item').length, 6);
+  assert.equal(app.container.querySelectorAll('.osb-automation-item').length, 3);
   assert.equal(app.query('button'), null);
   assert.deepEqual(app.actions.map(item => item.action), ['probe']);
   assert.deepEqual(app.stored(), []);
@@ -970,31 +971,12 @@ test('SA home submits a new requirement and multiple repository bindings with th
   assert.deepEqual(input.applications, applications);
 });
 
-for (const role of ROLES) test(`${role} Review, Commit and Merge Request submit the selected target and snapshot only on Run`, async t => {
-  const reviewId = '11111111-1111-4111-8111-111111111111';
-  const target = role === 'SA' ? 'specs' : 'code';
-  const app = setup(t, { role, evidence: payload => output({ version: 1, kind: payload.action, data:
-    payload.action === 'history' ? { revisions: [], deliveries: [], reviews: [{ id: reviewId, target, file_count: 1, created_at: '2026-10-06T00:00:00Z' }] }
-      : { id: payload.input.id, context: Object.fromEntries(Object.entries(payload.input).filter(([key]) => !['id', 'kind'].includes(key))),
-        created_at: '2026-10-06T00:00:00Z', target, files: [] } }) });
-  await app.ready(); await eventually(() => app.query('[aria-label="Reviewed snapshot"]').options.length === 2);
-  assert.deepEqual([...app.query('[aria-label="Repository target"]').options].map(option => option.value), role === 'SA' ? ['specs'] : ['specs', 'code']);
-  for (const [index, stage] of ['review', 'commit', 'merge-request'].entries()) {
-    app.select(stage);
-    assert.equal(app.dispatched().length, index, 'Selecting a node never runs it');
-    if (stage !== 'review') {
-      app.submit(); await settled();
-      assert.equal(app.dispatched().length, index, 'Delivery requires an explicit reviewed snapshot');
-      app.query('[aria-label="Reviewed snapshot"]').value = reviewId;
-      app.query('[aria-label="Commit message / PR title"]').value = 'Implement booking';
-    }
-    app.submit(); await eventually(() => app.button('Refresh run status'));
-    const input = app.dispatched()[index].input;
-    assert.equal(input.target, target); assert.equal(input.stage, stage); assert.equal(input.request, '');
-    assert.equal(input.automation_id, AUTOMATIONS.find(row => row.role === role && row.stage === stage).id);
-    if (stage !== 'review') { assert.equal(input.review_id, reviewId); assert.equal(input.message, 'Implement booking'); }
-    app.button('Start another run').click();
-    app.query('[aria-label="Reviewed snapshot"]').value = '';
-  }
-  assert.ok(app.evidenceCalls.every(call => ['history', 'record'].includes(call.action)));
+for (const role of ROLES) test(`${role} exposes only planning and implementation with a manual conversation handoff`, async t => {
+  const app = setup(t, { role });
+  await app.ready();
+  assert.deepEqual([...app.query('select').options].map(option => option.value), ['propose', 'update', 'apply']);
+  assert.equal(app.query('[aria-label="Reviewed snapshot"], [aria-label="Commit message / PR title"], [aria-label="Repository target"]'), null);
+  assert.ok(app.query('[aria-label="Continue in conversation"]'));
+  assert.equal(app.button('Open conversation').disabled, true);
+  assert.equal(app.dispatched().length, 0);
 });

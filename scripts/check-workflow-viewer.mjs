@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { STAGES } from '../src/workflow-actions.js';
 
-const root = new URL('../.archify/workflow-role-delivery-20261006-061811/', import.meta.url);
+const root = new URL('../.archify/workflow-role-conversation-20261006/', import.meta.url);
 const read = name => readFile(new URL(name, root));
 const [html, candidate, deliveryBytes, finalBytes] = await Promise.all([
   read('role-workflow.html'), read('candidate.json'),

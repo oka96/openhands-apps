@@ -1,19 +1,19 @@
 import { callRoleAutomation } from './automation.js';
 
-const LABELS = { revisions: 'Spec revisions', reviews: 'Reviewed changes', deliveries: 'Delivery receipts' };
+const LABELS = { revisions: 'Spec revisions', reviews: 'Past reviews', deliveries: 'Past delivery receipts' };
 const stamp = value => new Date(value).toLocaleString();
 
 /** Render automation records. This component never computes a diff or executes Git. */
-export function mountRoleEvidence({ host, container, context, onReviews }) {
+export function mountRoleEvidence({ host, container, context }) {
   const document = container.ownerDocument;
   const el = (tag, text, className = '') => {
     const node = document.createElement(tag); node.textContent = text; node.className = className; return node;
   };
   let disposed = false, generation = 0, historyGeneration = 0, kind = 'revisions', listing = null;
-  const panel = el('section', '', 'osb-evidence'); panel.setAttribute('aria-label', 'Specification revisions and delivery');
+  const panel = el('section', '', 'osb-evidence'); panel.setAttribute('aria-label', 'Specification revisions and history');
   const heading = el('div', '', 'osb-artifact-heading');
   const refresh = el('button', 'Refresh history', 'osb-button'); refresh.type = 'button';
-  heading.append(el('h3', 'Specification revisions and delivery'), refresh);
+  heading.append(el('h3', 'Specification revisions and history'), refresh);
   const tabs = el('div', '', 'osb-artifact-tabs'); tabs.setAttribute('role', 'group'); tabs.setAttribute('aria-label', 'Evidence type');
   const select = el('select'); select.setAttribute('aria-label', 'Evidence record');
   const status = el('p', '', 'osb-muted'); status.setAttribute('role', 'status');
@@ -63,7 +63,7 @@ export function mountRoleEvidence({ host, container, context, onReviews }) {
     select.hidden = !select.options.length;
     if (select.options.length) read();
     else status.textContent = kind === 'revisions' ? 'Spec changes appear here after Propose, Update or Apply runs.'
-      : kind === 'reviews' ? 'Run Review to capture a spec or code diff before delivery.' : 'Commit and Merge Request receipts appear here.';
+      : kind === 'reviews' ? 'No past review records. Review current changes in the related conversation.' : 'No past delivery receipts. Commit or merge from the related conversation.';
   }
   async function reload(preferredKind) {
     const current = ++historyGeneration;
@@ -72,7 +72,7 @@ export function mountRoleEvidence({ host, container, context, onReviews }) {
     try {
       const result = await callRoleAutomation(host, 'history', context);
       if (disposed || historyGeneration !== current) return;
-      listing = result.data; onReviews?.(listing.reviews); renderList();
+      listing = result.data; renderList();
     } catch (error) { if (!disposed && historyGeneration === current) status.textContent = error.message; }
     finally { if (!disposed && historyGeneration === current) refresh.disabled = false; }
   }

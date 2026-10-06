@@ -19,7 +19,7 @@ const requireValue = (condition, message) => { if (!condition) throw new Error(m
 
 export function validateRoleInput(input) {
   const fields = ['stage', 'spec_store', 'requirement_id', 'context_change', 'role', 'spec_id', 'change', 'request'];
-  for (const key of ['applications', 'target', 'review_id', 'message']) if (object(input) && Object.hasOwn(input, key)) fields.push(key);
+  for (const key of ['applications']) if (object(input) && Object.hasOwn(input, key)) fields.push(key);
   if (object(input) && Object.hasOwn(input, 'application_id')) { fields.push('application_id'); requireValue(slug(input.application_id) && input.application_id.length <= 80, 'Choose an impacted application.'); }
   const withIds = object(input) && (Object.hasOwn(input, 'automation_id') || Object.hasOwn(input, 'request_id'));
   requireValue(exact(input, withIds ? [...fields, 'automation_id', 'request_id'] : fields), 'Invalid role automation input fields.');
@@ -36,13 +36,6 @@ export function validateRoleInput(input) {
     SLUG.test(input.spec_id.slice(prefix.length)), 'Choose a spec belonging to this requirement and role.');
   requireValue(text(input.request, 10000) && (!['propose', 'update'].includes(input.stage) || input.request.trim().length > 0),
     'Enter a prompt of at most 10000 characters. Propose and Update require a prompt.');
-  if (['review', 'commit', 'merge-request'].includes(input.stage)) {
-    requireValue(['specs', 'code'].includes(input.target) && (input.role !== 'SA' || input.target === 'specs'), 'Choose a repository target. SA can deliver specifications only.');
-    if (input.stage !== 'review') {
-      requireValue(uuid(input.review_id), 'Run Review and select its snapshot before delivery.');
-      requireValue(text(input.message, 500) && input.message.trim().length > 0 && !/[\x00-\x1f]/.test(input.message), 'Enter a one-line commit message or PR title of at most 500 characters.');
-    }
-  }
   if (withIds) requireValue(uuid(input.automation_id) && uuid(input.request_id), 'Invalid automation or request ID.');
   return input;
 }
@@ -50,7 +43,14 @@ export function validateRoleInput(input) {
 function validateResponse(data, action, input) {
   const invalid = 'Invalid role automation response. Inspect native Automation history before retrying.';
   requireValue(object(data) && data.version === 1 && data.kind === action, invalid);
-  if (action === 'history' || action === 'record') {
+  if (action === 'conversation') {
+    requireValue(exact(data, ['version', 'kind', 'context', 'conversation']) && exact(data.context, ['spec_store', 'role', 'requirement_id', 'spec_id']) &&
+      Object.keys(data.context).every(key => data.context[key] === input[key]), invalid);
+    const conversation = data.conversation;
+    requireValue(conversation === null || exact(conversation, ['id', 'run_id', 'stage', 'status', 'started_at']) &&
+      uuid(conversation.id) && uuid(conversation.run_id) && STAGES.includes(conversation.stage) && STATES.includes(conversation.status) &&
+      text(conversation.started_at, 80) && Number.isFinite(Date.parse(conversation.started_at)), invalid);
+  } else if (action === 'history' || action === 'record') {
     requireValue(exact(data, ['version', 'kind', 'data']) && object(data.data), invalid);
     if (action === 'history') requireValue(['revisions', 'reviews', 'deliveries'].every(key => Array.isArray(data.data[key]) && data.data[key].length <= 50
       && data.data[key].every(row => uuid(row.id) && text(row.created_at, 80))), invalid);
@@ -113,13 +113,13 @@ function validateConfiguration(config, repository, message) {
 }
 
 export async function callRoleAutomation(host, action, input) {
-  requireValue(['probe', 'setup', 'dispatch', 'status', 'history', 'record'].includes(action), 'Unsupported role automation action.');
+  requireValue(['probe', 'setup', 'dispatch', 'status', 'history', 'record', 'conversation'].includes(action), 'Unsupported role automation action.');
   if (action === 'dispatch') {
     validateRoleInput(input);
     requireValue(uuid(input.automation_id) && uuid(input.request_id), 'A submission needs automation and request IDs.');
   } else if (action === 'status') {
     requireValue(exact(input, ['run_id', 'automation_id']) && uuid(input.run_id) && uuid(input.automation_id), 'Invalid run status request.');
-  } else if (action === 'history' || action === 'record') {
+  } else if (['history', 'record', 'conversation'].includes(action)) {
     requireValue(exact(input, ['spec_store', 'role', 'requirement_id', 'spec_id', ...(action === 'record' ? ['kind', 'id'] : [])])
       && path(input.spec_store) && ROLES.includes(input.role) && text(input.requirement_id, 160) && text(input.spec_id, 160), 'Choose a role specification to view its evidence.');
     if (action === 'record') requireValue(['revisions', 'reviews', 'deliveries'].includes(input.kind) && uuid(input.id), 'Choose a valid evidence record.');

@@ -264,7 +264,8 @@ test('Role spec selects the exact target for the single inline automation form',
       if (request.path === '/api/file/home') return { home: '/Users/test' };
       const encoded = request.body.command.match(/'([A-Za-z0-9+/=]+)'\s*$/)[1];
       const payload = JSON.parse(Buffer.from(encoded, 'base64').toString('utf8'));
-      if (payload.action === 'history') return output({ version: 1, kind: 'history', data: { revisions: [], reviews: [], deliveries: [] } });
+      if (payload.action === 'conversation') return output({ version: 1, kind: 'conversation', context: payload.input, conversation: null });
+    if (payload.action === 'history') return output({ version: 1, kind: 'history', data: { revisions: [], reviews: [], deliveries: [] } });
       actions.push(payload);
       if (payload.action === 'dispatch') return output({ version: 1, kind: 'dispatch',
         automation_id: payload.input.automation_id, request_id: payload.input.request_id,
@@ -790,6 +791,7 @@ function readyAutomations(actions, workspace = DEFAULT_STORE) {
     if (request.path === '/api/file/home') return { home: '/Users/test' };
     const encoded = request.body.command.match(/'([A-Za-z0-9+/=]+)'\s*$/)[1];
     const payload = JSON.parse(Buffer.from(encoded, 'base64').toString('utf8'));
+    if (payload.action === 'conversation') return output({ version: 1, kind: 'conversation', context: payload.input, conversation: null });
     if (payload.action === 'history') return output({ version: 1, kind: 'history', data: { revisions: [], reviews: [], deliveries: [] } });
     actions.push(payload);
     assert.equal(payload.action, 'probe', 'Passive role workspace interactions only probe definitions');
@@ -807,7 +809,7 @@ function assertAutomationLanguage(app) {
 }
 
 for (const descriptor of ROLE_APPS) {
-  test(`${descriptor.displayName} home and detail expose only its work and six related automations`, async t => {
+  test(`${descriptor.displayName} home and detail expose only its work and three related automations`, async t => {
     const actions = [];
     const app = setup(t, { role: descriptor.role, automationRequest: readyAutomations(actions) });
     await settled();
@@ -1006,6 +1008,7 @@ test('shared setup updates selected automation history without remounting its dr
     if (request.method === 'GET') return validProbe(request);
     const encoded = request.body.command.match(/'([A-Za-z0-9+/=]+)'\s*$/)[1];
     const payload = JSON.parse(Buffer.from(encoded, 'base64').toString('utf8'));
+    if (payload.action === 'conversation') return output({ version: 1, kind: 'conversation', context: payload.input, conversation: null });
     if (payload.action === 'history') return output({ version: 1, kind: 'history', data: { revisions: [], reviews: [], deliveries: [] } });
     actions.push(payload.action);
     if (payload.action === 'setup') connected = true;

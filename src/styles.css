@@ -304,3 +304,7 @@
 .osb-intake[hidden] { display: none; }
 .osb-application-binding { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 12px; margin: 12px 0; border: 1px solid #dbe2ed; border-radius: 8px; }
 @media (max-width: 640px) { .osb-application-binding { grid-template-columns: 1fr; } }
+.osb-conversation-handoff { margin-bottom:20px; padding-bottom:16px; border-bottom:1px solid var(--border); }
+.osb-conversation-handoff h3 { font-size:14px; margin-bottom:8px; }
+.osb-conversation-handoff p { line-height:1.6; }
+.osb-conversation-handoff a { text-decoration:none; }

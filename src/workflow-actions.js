@@ -15,32 +15,11 @@ export const ACTIONS = Object.freeze([
     "description": "Revise the selected specification and save its before-and-after diff."
   },
   {
-    "id": "review",
-    "label": "Review",
-    "kind": "deterministic",
-    "skill": null,
-    "description": "Capture an exact spec or code diff for review before delivery."
-  },
-  {
     "id": "apply",
     "label": "Apply",
     "kind": "agent",
     "skill": "openspec-apply-change",
     "description": "Implement the selected spec tasks. SA prepares its design handoff. Validation stays local."
-  },
-  {
-    "id": "commit",
-    "label": "Commit",
-    "kind": "deterministic",
-    "skill": null,
-    "description": "Commit exactly the reviewed changes locally. This action does not push."
-  },
-  {
-    "id": "merge-request",
-    "label": "Merge Request",
-    "kind": "deterministic",
-    "skill": null,
-    "description": "Commit the reviewed changes on a new branch, push it and open a GitHub pull request."
   }
 ]);
 export const STAGES = ACTIONS.map(action => action.id);
