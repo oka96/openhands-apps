@@ -7,7 +7,7 @@ Review, commit and merge are user-directed work in an existing OpenHands convers
 - **BREAKING**: retire Review, Commit and Merge Request automation actions; keep Propose, Update and Apply for each role.
 - Add a durable, selected-spec conversation handoff for manual review and Git delivery.
 - Keep the role workspace action panel concise, with configuration and completed-run details collapsed by default.
-- Preserve specification revision diffs and historical delivery evidence.
+- Preserve stored revision and delivery evidence, but remove the inline history/diff panel from role workspaces. Use the related conversation to inspect changes.
 - Pause retired native definitions without deleting their run history.
 
 ## Capabilities

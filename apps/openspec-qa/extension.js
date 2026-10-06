@@ -292,16 +292,6 @@ var styles_default = `.osb-root {
 .osb-card-applications { font-size: 11px; opacity: .8; margin: 4px 0; overflow-wrap: anywhere; }
 .osb-delivery-fields { border: 1px solid var(--osb-border, #dbe2ed); border-radius: 10px; padding: 16px; display: grid; gap: 12px; }
 .osb-delivery-fields[hidden] { display: none; }
-.osb-evidence { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--osb-border, #dbe2ed); }
-.osb-evidence select { max-width: 100%; width: 100%; padding: 10px; }
-.osb-evidence .osb-artifact-tabs { margin: 12px 0; }
-.osb-diff-file { margin: 12px 0; border: 1px solid var(--osb-border, #dbe2ed); border-radius: 8px; overflow: hidden; }
-.osb-diff-file summary { padding: 10px; overflow-wrap: anywhere; font-weight: 600; cursor: pointer; }
-.osb-diff { margin: 0; padding: 12px; overflow: auto; max-height: 440px; font: 12px/1.7 ui-monospace, monospace; white-space: pre-wrap; overflow-wrap: anywhere; background: #f5f7fa; color: #243044; }
-.osb-diff span { display: block; min-height: 1.7em; }
-.osb-diff-add { background: #e3f5e8; color: #165c2d; }
-.osb-diff-remove { background: #fee8e7; color: #852a27; }
-.osb-receipt { overflow-wrap: anywhere; font-family: ui-monospace, monospace; }
 .osb-intake { border: 1px solid #dbe2ed; border-radius: 10px; padding: 16px; display: grid; gap: 12px; }
 .osb-intake[hidden] { display: none; }
 .osb-application-binding { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 12px; margin: 12px 0; border: 1px solid #dbe2ed; border-radius: 8px; }
@@ -634,121 +624,6 @@ function mountRoleConversation({ host, container, context, navigate }) {
   } };
 }
 
-// src/role-evidence.js
-var LABELS = { revisions: "Spec revisions", reviews: "Past reviews", deliveries: "Past delivery receipts" };
-var stamp = (value) => new Date(value).toLocaleString();
-function mountRoleEvidence({ host, container, context }) {
-  const document2 = container.ownerDocument;
-  const el3 = (tag, text3, className = "") => {
-    const node = document2.createElement(tag);
-    node.textContent = text3;
-    node.className = className;
-    return node;
-  };
-  let disposed = false, generation = 0, historyGeneration = 0, kind = "revisions", listing = null;
-  const panel = el3("section", "", "osb-evidence");
-  panel.setAttribute("aria-label", "Specification revisions and history");
-  const heading = el3("div", "", "osb-artifact-heading");
-  const refresh = el3("button", "Refresh history", "osb-button");
-  refresh.type = "button";
-  heading.append(el3("h3", "Specification revisions and history"), refresh);
-  const tabs = el3("div", "", "osb-artifact-tabs");
-  tabs.setAttribute("role", "group");
-  tabs.setAttribute("aria-label", "Evidence type");
-  const select = el3("select");
-  select.setAttribute("aria-label", "Evidence record");
-  const status = el3("p", "", "osb-muted");
-  status.setAttribute("role", "status");
-  const body = el3("div", "", "osb-evidence-body");
-  const controls = /* @__PURE__ */ new Map();
-  for (const [key, label2] of Object.entries(LABELS)) {
-    const button3 = el3("button", label2);
-    button3.type = "button";
-    button3.addEventListener("click", () => {
-      kind = key;
-      renderList();
-    });
-    controls.set(key, button3);
-    tabs.append(button3);
-  }
-  panel.append(heading, tabs, select, status, body);
-  container.append(panel);
-  async function read() {
-    const id = select.value, selectedKind = kind, current = ++generation;
-    body.replaceChildren();
-    if (!id) return;
-    status.textContent = "Loading selected evidence\u2026";
-    try {
-      const result = await callRoleAutomation(host, "record", { ...context, kind: selectedKind, id });
-      if (disposed || generation !== current) return;
-      const record = result.data;
-      status.textContent = `${stamp(record.created_at)} \xB7 ${record.stage || record.target || "Review"}${record.outcome ? ` \xB7 ${record.outcome}` : ""}`;
-      if (record.repository) body.append(el3("p", record.repository, "osb-muted"));
-      if (record.commit) body.append(el3("p", `Commit ${record.commit} \xB7 ${record.branch}`, "osb-receipt"));
-      if (record.state) body.append(el3("p", `Delivery: ${record.state}`));
-      if (record.url) {
-        const link = el3("a", "Open pull request \u2192", "osb-run-link");
-        link.href = record.url;
-        link.target = "_blank";
-        link.rel = "noopener noreferrer";
-        body.append(link);
-      }
-      if (record.files?.length === 0) body.append(el3("p", "No changes in this reviewed snapshot.", "osb-muted"));
-      for (const file of record.files || []) {
-        const details = el3("details", "", "osb-diff-file");
-        details.open = true;
-        details.append(el3("summary", `${file.status} \xB7 ${file.path}${file.binary ? " \xB7 binary" : ""}`));
-        const pre = el3("pre", "", "osb-diff");
-        pre.setAttribute("aria-label", `Diff for ${file.path}`);
-        for (const line of file.diff.split("\n")) pre.append(el3("span", line || " ", line.startsWith("+") ? "osb-diff-add" : line.startsWith("-") ? "osb-diff-remove" : ""));
-        details.append(pre);
-        body.append(details);
-      }
-    } catch (error) {
-      if (!disposed && generation === current) status.textContent = error.message;
-    }
-  }
-  function renderList() {
-    ++generation;
-    body.replaceChildren();
-    select.replaceChildren();
-    for (const [key, button3] of controls) button3.setAttribute("aria-pressed", String(key === kind));
-    for (const row of listing?.[kind] || []) {
-      const option = el3("option", `${stamp(row.created_at)} \xB7 ${row.stage || row.target || "Review"} \xB7 ${row.outcome || row.state || `${row.file_count} files`}`);
-      option.value = row.id;
-      select.append(option);
-    }
-    select.hidden = !select.options.length;
-    if (select.options.length) read();
-    else status.textContent = kind === "revisions" ? "Spec changes appear here after Propose, Update or Apply runs." : kind === "reviews" ? "No past review records. Review current changes in the related conversation." : "No past delivery receipts. Commit or merge from the related conversation.";
-  }
-  async function reload(preferredKind) {
-    const current = ++historyGeneration;
-    if (preferredKind && LABELS[preferredKind]) kind = preferredKind;
-    refresh.disabled = true;
-    status.textContent = "Loading history\u2026";
-    try {
-      const result = await callRoleAutomation(host, "history", context);
-      if (disposed || historyGeneration !== current) return;
-      listing = result.data;
-      renderList();
-    } catch (error) {
-      if (!disposed && historyGeneration === current) status.textContent = error.message;
-    } finally {
-      if (!disposed && historyGeneration === current) refresh.disabled = false;
-    }
-  }
-  refresh.addEventListener("click", () => reload());
-  select.addEventListener("change", read);
-  reload();
-  return { refresh: reload, dispose() {
-    disposed = true;
-    ++generation;
-    ++historyGeneration;
-    panel.remove();
-  } };
-}
-
 // src/role-actions.js
 var UUID2 = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 var FINISHED_STATES = /* @__PURE__ */ new Set(["COMPLETED", "FAILED", "CANCELLED", "SKIPPED"]);
@@ -949,7 +824,7 @@ function mountRoleActions({
   promptLabel.append(prompt);
   if (typeof initialDraft?.prompt === "string") prompt.value = initialDraft.prompt;
   if (typeof initialDraft?.feature === "string") change.value = initialDraft.feature;
-  let evidence = null, conversation = null;
+  let conversation = null;
   const help = el("p", "osb-skill-help");
   const submit = el("button", "osb-button osb-primary");
   submit.type = "submit";
@@ -967,7 +842,6 @@ function mountRoleActions({
     const context = { spec_store: workspace, role: role.id, requirement_id: requirement.id, spec_id: specId };
     conversation = mountRoleConversation({ host, container: body, context, navigate });
     body.prepend(conversation.element);
-    evidence = mountRoleEvidence({ host, container: body, context });
   }
   function update() {
     if (disposed) return;
@@ -1121,7 +995,6 @@ Spec store: ${report.configuration.spec_store}`));
       lastStatus = status;
       renderLast();
       conversation?.refresh();
-      if (["COMPLETED", "FAILED"].includes(status.status)) evidence?.refresh("revisions");
     } catch (error) {
       if (!disposed) renderLast(error.message || "Cannot read run status.");
     } finally {
@@ -1193,7 +1066,6 @@ Spec store: ${report.configuration.spec_store}`));
   const cleanup = () => {
     disposed = true;
     conversation?.dispose();
-    evidence?.dispose();
     panel.remove();
   };
   cleanup.selectStage = selectStage;

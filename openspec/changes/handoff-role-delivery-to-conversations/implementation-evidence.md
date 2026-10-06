@@ -37,3 +37,11 @@ The OpenSpec store had no changes from this implementation. The change remains a
 - Apps `npm run check` passed again: 263 tests, five generated bundles/manifests and ten strict OpenSpec changes. Existing tests verify collapsed configuration, visible primary controls and expanded outcomes requiring attention.
 - Reinstalled and enabled all five Apps at 0.13.1. In the installed SA workspace, verified settings and completed-run details start closed and can each be opened; switching the diagram from Apply to Update updates the action and required prompt without starting a run.
 - Saved the final view at `/Users/oka/.codex/visualizations/2026/10/05/01a10ddb-8678-72e2-a50c-f284bfc5f261/role-workflow-compact-panel.png`.
+
+## Remove inline diffs — 0.13.2
+
+- Removed the role evidence/history panel, its renderer and styles, and history/record requests on mount and run refresh. Automation's stored evidence is unchanged; conversation, native run history and source artifact navigation remain available.
+- Removed the five tests specific to the deleted renderer. Existing role-action coverage now confirms there is no inline evidence/diff panel or evidence request when opening a workspace or refreshing a run.
+- `npm run check` passed: 258 tests, five generated bundles/manifests and ten strict OpenSpec changes.
+- Reinstalled and enabled all five Apps at 0.13.2. Verified the installed SA workspace has no diff/history panel before or after refreshing the existing run, while its selected-spec conversation and native history links remain available. No new automation run was started.
+- Screenshot: `/Users/oka/.codex/visualizations/2026/10/05/01a10ddb-8678-72e2-a50c-f284bfc5f261/role-workflow-no-diff.png`.

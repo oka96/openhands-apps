@@ -12,7 +12,7 @@ Keep Apps as a visual client of Automation-owned lookup. Preserve existing conve
 - Resolve conversations from bounded native history and validated local run associations. Persist a minimal association immediately after conversation creation, before starting the agent. Use existing validated terminal reports for older runs. Select by native start time, never by browser last-run cache. Return only validated identifiers, action, status and time.
 - Show an independent Open conversation button for the selected spec, with refresh, unavailable and error states. Navigate through the public host API and retain backend identity; users choose review, commit or merge within OpenHands.
 - Keep the right action panel focused on the selected action, prompt, Run and conversation controls. Omit repeated context and instructional paragraphs. Put effective configuration in a closed Automation settings disclosure and completed run output in a closed Last run disclosure; unresolved runs, blocked outcomes and errors remain expanded. Retain concise missing-input and connection errors.
-- Retain the existing private evidence path for revision/history compatibility; remove its Git mutation helpers. Render past review/delivery evidence as history only.
+- Retain the existing private evidence path for revision/history compatibility; remove its Git mutation helpers. Role workspaces do not load or render revision diffs or delivery evidence; users inspect changes in the related conversation and runs through native automation history.
 - Regenerate the three-node Archify diagram from pinned source evidence.
 
 ## Risks / Trade-offs

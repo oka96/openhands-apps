@@ -17,3 +17,4 @@
 
 ## 4. Concise action panel
 - [x] 4.1 Remove repeated right-panel explanations, collapse settings and completed runs, preserve actionable states, and verify the rebuilt Apps in tests and OpenHands.
+- [x] 4.2 Remove inline diff/history presentation and its automatic requests; rebuild, verify and install updated Apps while preserving conversation navigation and stored evidence.

@@ -28,11 +28,8 @@ The Apps render returned data and pass explicit inputs through small fixed
 transport loaders. The action catalog is generated from Automation during build.
 
 SA home can propose a new requirement: enter its ID, feature, prompt and one or
-more application bindings. Other roles derive their scopes from SA. To inspect
-edits, open **Specification revisions and history** in the owning role App.
-**Spec revisions** lists each modifying run, including partial failed updates.
-Select a revision to read its before/after diff. Switching specs keeps each
-specification's history separate.
+more application bindings. Other roles derive their scopes from SA. Inspect
+edits in the related conversation; role workspaces do not load or display diffs.
 
 Use **Open conversation** under **Review, commit & merge** to open the newest
 conversation for the selected store, requirement, role and spec. It works after
@@ -41,8 +38,9 @@ created. Navigation preserves the selected backend and starts no work. Select
 OpenHands' Commits panel inside the conversation to inspect and handle Git actions;
 the public App API cannot select that panel directly. If no conversation exists,
 run Propose, Update or Apply, then **Refresh conversation**. Lookup errors keep the
-button unavailable and can be retried. Old reviews and delivery receipts remain
-readable as history; the App no longer runs Git delivery commands.
+button unavailable and can be retried. Stored revisions and delivery records
+are retained by Automation; the App does not render an evidence-history panel
+or run Git delivery commands. Native automation history remains linked.
 
 The current three-node Archify source and checked standalone viewer are in
 `.archify/workflow-role-conversation-20261006/`. `candidate.json` cites the
@@ -281,7 +279,7 @@ Build once, then add each package in **Customize → Apps → Add app**:
 
 Leave Ref and Repository path blank for these local directories. Each manifest
 and self-contained `extension.js` is at its package root. Install and enable all
-five packages at the same release version, currently 0.13.1.
+five packages at the same release version, currently 0.13.2.
 
 Installation leaves the app disabled. Review the source, then choose
 **Enable trusted app**. The app runs inside Canvas and uses its authenticated

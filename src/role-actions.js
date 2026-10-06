@@ -1,7 +1,6 @@
 import { callRoleAutomation, validateRoleInput } from './automation.js';
 import { ACTIONS } from './workflow-actions.js';
 import { mountRoleConversation } from './role-conversation.js';
-import { mountRoleEvidence } from './role-evidence.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const FINISHED_STATES = new Set(['COMPLETED', 'FAILED', 'CANCELLED', 'SKIPPED']);
@@ -206,7 +205,7 @@ export function mountRoleActions({ host, container, navigate, workspace, require
   prompt.rows = 4; prompt.maxLength = 10000; prompt.placeholder = 'Add instructions…'; promptLabel.append(prompt);
   if (typeof initialDraft?.prompt === 'string') prompt.value = initialDraft.prompt;
   if (typeof initialDraft?.feature === 'string') change.value = initialDraft.feature;
-  let evidence = null, conversation = null;
+  let conversation = null;
   const help = el('p', 'osb-skill-help');
   const submit = el('button', 'osb-button osb-primary'); submit.type = 'submit';
   form.append(externalSelection ? selected : skillLabel, ...(newRequirement ? [intake] : []), changeLabel, ...(appChoices.length && role.id !== 'SA' ? [appLabel] : []), specPreview, promptLabel, help, submit);
@@ -219,7 +218,6 @@ export function mountRoleActions({ host, container, navigate, workspace, require
     const context = { spec_store: workspace, role: role.id, requirement_id: requirement.id, spec_id: specId };
     conversation = mountRoleConversation({ host, container: body, context, navigate });
     body.prepend(conversation.element);
-    evidence = mountRoleEvidence({ host, container: body, context });
   }
 
   function update() {
@@ -354,7 +352,6 @@ export function mountRoleActions({ host, container, navigate, workspace, require
       lastStatus = status;
       renderLast();
       conversation?.refresh();
-      if (['COMPLETED', 'FAILED'].includes(status.status)) evidence?.refresh('revisions');
     } catch (error) { if (!disposed) renderLast(error.message || 'Cannot read run status.'); }
     finally {
       busy = false;
@@ -396,7 +393,7 @@ export function mountRoleActions({ host, container, navigate, workspace, require
   });
   renderLast(); update();
   connect('probe').then(() => refreshStatus());
-  const cleanup = () => { disposed = true; conversation?.dispose(); evidence?.dispose(); panel.remove(); };
+  const cleanup = () => { disposed = true; conversation?.dispose(); panel.remove(); };
   cleanup.selectStage = selectStage;
   cleanup.getStage = () => stage;
   cleanup.getDraft = () => ({ stage, prompt: prompt.value, feature: change.value });

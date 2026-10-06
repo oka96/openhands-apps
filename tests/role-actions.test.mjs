@@ -163,13 +163,15 @@ test('inline role controls default to Apply and automatically probe without conn
   assert.equal(app.query('.osb-automation-target').closest('details').open, false);
   assert.equal(app.query('.osb-role-actions').getAttribute('aria-label'), 'Run OpenSpec automation for SA');
   assert.equal(app.query('.osb-role-actions-body').firstElementChild, app.query('.osb-conversation-handoff'));
-  assert.equal(app.container.querySelectorAll('select').length, 2, 'Role spec is supplied by the parent');
+  assert.equal(app.query('.osb-evidence, .osb-diff'), null);
+  assert.equal(app.container.querySelectorAll('select').length, 1, 'Only automation selection remains; Role spec is supplied by the parent');
   assert.equal(app.query('[aria-label="SA automation"]').value, 'apply');
   assert.equal(app.query('[aria-label="SA new feature name"]').parentElement.hidden, true);
   assert.equal(app.query('[aria-label="SA prompt"]').required, false);
   assert.equal(app.button('Run SA Apply').disabled, true);
   await app.ready();
   assert.deepEqual(app.actions.map(item => item.action), ['probe']);
+  assert.deepEqual(app.evidenceCalls, [], 'Opening a role workspace does not load diff history');
   assert.equal(app.button('Run SA Apply').disabled, false);
   assert.match(app.container.textContent, /Managed workspaces:.*openhands-demo/);
   assert.match(app.container.textContent, /Spec store:.*openspec-store/);
@@ -330,6 +332,7 @@ test('status refresh exposes native run and conversation links without changing 
   await eventually(() => app.query('.osb-run-status'));
   assert.match(app.query('.osb-run-status').textContent, /completed/);
   assert.deepEqual(app.actions.map(item => item.action), ['probe', 'dispatch', 'status']);
+  assert.deepEqual(app.evidenceCalls, [], 'Refreshing run status does not load diff history');
   assert.match(app.container.textContent, /Refresh the requirement/);
   assert.deepEqual(REQUIREMENT, before);
   const conversation = [...app.container.querySelectorAll('.osb-run-result a')].find(node => node.textContent.includes('Open conversation'));

@@ -24,12 +24,17 @@ A selected role spec SHALL expose a button to open its newest related conversati
 - **THEN** a refreshed lookup can open that conversation for inspection
 
 ### Requirement: Preserve existing evidence and history
-Connection migration SHALL disable retired delivery definitions without deleting native runs or conversations. Active work SHALL block retirement. Specification revision diffs and past delivery records SHALL remain readable without prompting the user to run removed automations.
+Connection migration SHALL disable retired delivery definitions without deleting native runs or conversations. Active work SHALL block retirement. Existing specification revision and delivery records SHALL remain stored. Role workspaces SHALL NOT load or display the inline evidence/diff panel; users SHALL inspect changes in the related conversation, with native automation history still accessible.
 
 #### Scenario: Reconnect after upgrade
 - **WHEN** the user reconnects an installation containing the six old actions per role
 - **THEN** twelve planning and implementation definitions are active and the twelve delivery definitions are disabled
 - **AND** existing native identifiers and history remain intact
+
+#### Scenario: Open a role workspace
+- **WHEN** the user opens or refreshes a selected spec's role workspace
+- **THEN** it shows no revision diff or evidence-history panel and makes no evidence history or record requests
+- **AND** conversation navigation, native automation history and source artifacts remain available
 
 ### Requirement: Concise role action panel
 The role workspace SHALL prioritize the selected action, required inputs, Run and conversation controls. It SHALL omit repeated instructional paragraphs and selected requirement/spec text. Effective configuration and completed run details SHALL remain accessible in collapsed disclosures. Errors, blockers and unresolved runs SHALL remain visible without opening a disclosure.
