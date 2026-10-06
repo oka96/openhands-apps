@@ -161,6 +161,9 @@
 .osb-role-actions { min-width:0; }
 .osb-role-actions-body { font-size:11px; }
 .osb-role-actions-body > p { margin-bottom:10px; }
+.osb-action-details { margin-top:14px; padding-top:12px; border-top:1px solid var(--border); }
+.osb-action-details > summary { cursor:pointer; font-weight:600; color:var(--muted); }
+.osb-action-details[open] > summary { margin-bottom:12px; }
 .osb-automation-target { white-space:pre-wrap; overflow-wrap:anywhere; color:var(--muted); font-size:10px; }
 .osb-run-controls { display:flex; flex-wrap:wrap; gap:7px; margin:12px 0; }
 .osb-role-actions .osb-button { padding:7px 10px; min-height:34px; font-size:11px; white-space:normal; }
@@ -263,11 +266,9 @@
 .osb-workflow-viewer.is-expanded .osb-workflow-frame { flex:1; height:auto; min-height:0; }
 .osb-workflow-targets { display:grid; gap:14px; padding:20px; border-bottom:1px solid var(--border); margin-bottom:20px; }
 .osb-workflow-targets > p { font-size:12px; }
-.osb-selected-automation { padding:0 0 16px; }
+.osb-selected-automation { padding:0 0 4px; }
 .osb-selected-automation-title { font-size:20px; line-height:1.3; margin-bottom:10px!important; }
-.osb-selected-automation-description { color:var(--muted); font-size:13px; line-height:1.7; margin-bottom:12px!important; }
 .osb-selected-automation-definition { font-size:11px; line-height:1.7; overflow-wrap:anywhere; }
-.osb-selected-automation-context { color:var(--muted); font-size:11px; overflow-wrap:anywhere; margin-top:10px!important; }
 .osb-supporting-work { margin-top:24px; border:1px solid var(--border); border-radius:10px; padding:16px 20px; background:#ffffffa6; }
 .osb-supporting-work > summary { cursor:pointer; font-weight:600; }
 .osb-supporting-work > .osb-search { display:block; width:100%; margin:16px 0 0; border:1px solid var(--border); border-radius:6px; padding:9px; }

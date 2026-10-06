@@ -14,3 +14,6 @@
 ## 3. Integration
 - [x] 3.1 Reconnect shared native definitions and install updated Apps; verify an existing conversation link and empty-spec behavior in the browser without starting an agent.
 - [x] 3.2 Commit and push changed repositories to main and verify remote commit IDs.
+
+## 4. Concise action panel
+- [x] 4.1 Remove repeated right-panel explanations, collapse settings and completed runs, preserve actionable states, and verify the rebuilt Apps in tests and OpenHands.

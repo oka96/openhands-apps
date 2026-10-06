@@ -29,3 +29,11 @@ Pushed both implementation commits to `origin/main` and verified the remote refs
 - Automation: `6de08ca62a1878897c3001de6a7280fca1df2bf6`.
 
 The OpenSpec store had no changes from this implementation. The change remains active for inspection.
+
+## Concise panel follow-up — 0.13.1
+
+- Removed repeated action explanations, duplicated requirement/spec text and the conversation help paragraph. Shortened empty/input/loading messages.
+- Effective configuration is in a closed Automation settings disclosure. Completed output is in a closed Last run disclosure; unresolved runs, blockers and errors remain expanded.
+- Apps `npm run check` passed again: 263 tests, five generated bundles/manifests and ten strict OpenSpec changes. Existing tests verify collapsed configuration, visible primary controls and expanded outcomes requiring attention.
+- Reinstalled and enabled all five Apps at 0.13.1. In the installed SA workspace, verified settings and completed-run details start closed and can each be opened; switching the diagram from Apply to Update updates the action and required prompt without starting a run.
+- Saved the final view at `/Users/oka/.codex/visualizations/2026/10/05/01a10ddb-8678-72e2-a50c-f284bfc5f261/role-workflow-compact-panel.png`.

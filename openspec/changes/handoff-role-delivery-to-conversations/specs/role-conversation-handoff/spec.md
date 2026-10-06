@@ -30,3 +30,15 @@ Connection migration SHALL disable retired delivery definitions without deleting
 - **WHEN** the user reconnects an installation containing the six old actions per role
 - **THEN** twelve planning and implementation definitions are active and the twelve delivery definitions are disabled
 - **AND** existing native identifiers and history remain intact
+
+### Requirement: Concise role action panel
+The role workspace SHALL prioritize the selected action, required inputs, Run and conversation controls. It SHALL omit repeated instructional paragraphs and selected requirement/spec text. Effective configuration and completed run details SHALL remain accessible in collapsed disclosures. Errors, blockers and unresolved runs SHALL remain visible without opening a disclosure.
+
+#### Scenario: Ready selected spec
+- **WHEN** a connected role workspace opens an existing spec
+- **THEN** the action form and conversation controls appear without explanatory paragraphs or repeated selection text
+- **AND** configuration and completed run details are collapsed by default
+
+#### Scenario: Attention required
+- **WHEN** connection, input or run state prevents proceeding
+- **THEN** the reason and relevant recovery controls remain visible

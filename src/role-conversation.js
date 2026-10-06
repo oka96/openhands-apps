@@ -13,8 +13,7 @@ export function mountRoleConversation({ host, container, context, navigate }) {
   const unavailable = el('button', 'Open conversation', 'osb-button'); unavailable.type = 'button'; unavailable.disabled = true;
   const refresh = el('button', 'Refresh conversation', 'osb-button'); refresh.type = 'button';
   const controls = el('div', '', 'osb-run-controls'); controls.append(unavailable, refresh);
-  panel.append(el('h3', 'Review, commit & merge'),
-    el('p', 'Open this spec’s latest conversation to inspect changes and handle Git actions when needed.', 'osb-muted'), controls, status);
+  panel.append(el('h3', 'Review, commit & merge'), controls, status);
   container.append(panel);
   link.addEventListener('click', event => {
     if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -23,7 +22,7 @@ export function mountRoleConversation({ host, container, context, navigate }) {
   async function reload() {
     const current = ++generation;
     refresh.disabled = true; link.remove(); link.removeAttribute('href'); unavailable.hidden = false;
-    status.textContent = 'Finding this spec’s conversation…';
+    status.textContent = 'Finding conversation…';
     try {
       const result = await callRoleAutomation(host, 'conversation', context);
       if (disposed || current !== generation) return;
@@ -32,7 +31,7 @@ export function mountRoleConversation({ host, container, context, navigate }) {
         link.href = `/conversations/${conversation.id}?backend=${encodeURIComponent(host.backend.id)}`;
         controls.prepend(link); unavailable.hidden = true;
         status.textContent = `${conversation.stage[0].toUpperCase() + conversation.stage.slice(1)} · ${conversation.status} · ${new Date(conversation.started_at).toLocaleString()}`;
-      } else status.textContent = 'No related conversation yet. Run Propose, Update or Apply for this spec, then refresh.';
+      } else status.textContent = 'No related conversation yet. Run Propose, Update or Apply.';
     } catch (error) {
       if (!disposed && current === generation) status.textContent = `Could not find the conversation. ${error.message || 'Refresh to retry.'}`;
     } finally { if (!disposed && current === generation) refresh.disabled = false; }

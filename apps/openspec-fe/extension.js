@@ -162,6 +162,9 @@ var styles_default = `.osb-root {
 .osb-role-actions { min-width:0; }
 .osb-role-actions-body { font-size:11px; }
 .osb-role-actions-body > p { margin-bottom:10px; }
+.osb-action-details { margin-top:14px; padding-top:12px; border-top:1px solid var(--border); }
+.osb-action-details > summary { cursor:pointer; font-weight:600; color:var(--muted); }
+.osb-action-details[open] > summary { margin-bottom:12px; }
 .osb-automation-target { white-space:pre-wrap; overflow-wrap:anywhere; color:var(--muted); font-size:10px; }
 .osb-run-controls { display:flex; flex-wrap:wrap; gap:7px; margin:12px 0; }
 .osb-role-actions .osb-button { padding:7px 10px; min-height:34px; font-size:11px; white-space:normal; }
@@ -264,11 +267,9 @@ var styles_default = `.osb-root {
 .osb-workflow-viewer.is-expanded .osb-workflow-frame { flex:1; height:auto; min-height:0; }
 .osb-workflow-targets { display:grid; gap:14px; padding:20px; border-bottom:1px solid var(--border); margin-bottom:20px; }
 .osb-workflow-targets > p { font-size:12px; }
-.osb-selected-automation { padding:0 0 16px; }
+.osb-selected-automation { padding:0 0 4px; }
 .osb-selected-automation-title { font-size:20px; line-height:1.3; margin-bottom:10px!important; }
-.osb-selected-automation-description { color:var(--muted); font-size:13px; line-height:1.7; margin-bottom:12px!important; }
 .osb-selected-automation-definition { font-size:11px; line-height:1.7; overflow-wrap:anywhere; }
-.osb-selected-automation-context { color:var(--muted); font-size:11px; overflow-wrap:anywhere; margin-top:10px!important; }
 .osb-supporting-work { margin-top:24px; border:1px solid var(--border); border-radius:10px; padding:16px 20px; background:#ffffffa6; }
 .osb-supporting-work > summary { cursor:pointer; font-weight:600; }
 .osb-supporting-work > .osb-search { display:block; width:100%; margin:16px 0 0; border:1px solid var(--border); border-radius:6px; padding:9px; }
@@ -594,12 +595,7 @@ function mountRoleConversation({ host, container, context, navigate }) {
   refresh.type = "button";
   const controls = el3("div", "", "osb-run-controls");
   controls.append(unavailable, refresh);
-  panel.append(
-    el3("h3", "Review, commit & merge"),
-    el3("p", "Open this spec\u2019s latest conversation to inspect changes and handle Git actions when needed.", "osb-muted"),
-    controls,
-    status
-  );
+  panel.append(el3("h3", "Review, commit & merge"), controls, status);
   container.append(panel);
   link.addEventListener("click", (event) => {
     if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -612,7 +608,7 @@ function mountRoleConversation({ host, container, context, navigate }) {
     link.remove();
     link.removeAttribute("href");
     unavailable.hidden = false;
-    status.textContent = "Finding this spec\u2019s conversation\u2026";
+    status.textContent = "Finding conversation\u2026";
     try {
       const result = await callRoleAutomation(host, "conversation", context);
       if (disposed || current !== generation) return;
@@ -622,7 +618,7 @@ function mountRoleConversation({ host, container, context, navigate }) {
         controls.prepend(link);
         unavailable.hidden = true;
         status.textContent = `${conversation.stage[0].toUpperCase() + conversation.stage.slice(1)} \xB7 ${conversation.status} \xB7 ${new Date(conversation.started_at).toLocaleString()}`;
-      } else status.textContent = "No related conversation yet. Run Propose, Update or Apply for this spec, then refresh.";
+      } else status.textContent = "No related conversation yet. Run Propose, Update or Apply.";
     } catch (error) {
       if (!disposed && current === generation) status.textContent = `Could not find the conversation. ${error.message || "Refresh to retry."}`;
     } finally {
@@ -759,8 +755,6 @@ var FINISHED_STATES = /* @__PURE__ */ new Set(["COMPLETED", "FAILED", "CANCELLED
 var SKILLS = Object.fromEntries(ACTIONS.map((action) => [action.id, action.label]));
 var SKILL_NAMES = Object.fromEntries(ACTIONS.map((action) => [action.id, action.kind === "agent" ? action.skill : "Deterministic automation"]));
 var ROLES3 = ["SA", "Frontend", "Backend", "QA"];
-var SHARED_SETUP_HELP = "Connect the 12 role automations: Propose, Update and Apply for SA, Frontend, Backend and QA. Setup starts no agent.";
-var HELP = Object.fromEntries(ACTIONS.map((action) => [action.id, action.description]));
 function el(tag, className, text3) {
   const node = document.createElement(tag);
   if (className) node.className = className;
@@ -846,12 +840,12 @@ function mountRoleActions({
   const body = el("div", "osb-role-actions-body");
   const connectionText = el("p", "osb-muted");
   const target = el("p", "osb-automation-target");
-  const launchHelp = el("p", "osb-muted", "Submit here in this role workspace after choosing a requirement, Role spec and Automation. OpenSpec Kanban links to each role app. Native Run now has no requirement context. The profile shown here comes from role-workflow.json; the native profile selector does not override it.");
   const setup = button("Connect shared automations", () => connect("setup"));
   const probe = button("Check connection", () => connect("probe"));
   const connectionActions = el("div", "osb-run-controls");
-  connectionActions.append(setup, probe);
-  const setupHelp = el("p", "osb-muted", SHARED_SETUP_HELP);
+  connectionActions.append(setup);
+  const settings = el("details", "osb-action-details");
+  settings.append(el("summary", "", "Automation settings"), target, probe);
   const form = el("form", "osb-skill-form");
   form.setAttribute("aria-label", `${role.id} automation form`);
   const intake = el("fieldset", "osb-intake");
@@ -904,10 +898,8 @@ function mountRoleActions({
   const selected = el("header", "osb-selected-automation");
   selected.setAttribute("aria-label", `${role.id} selected automation`);
   const selectedTitle = el("h2", "osb-selected-automation-title");
-  const selectedDescription = el("p", "osb-selected-automation-description");
   const selectedDefinition = el("div", "osb-selected-automation-definition");
-  const selectedContext = el("p", "osb-selected-automation-context");
-  selected.append(el("span", "osb-label", "Automation"), selectedTitle, selectedDescription, selectedDefinition, selectedContext);
+  selected.append(selectedTitle, selectedDefinition);
   const skillLabel = el("label", "osb-skill-field");
   skillLabel.append(el("span", "osb-label", "Automation"));
   const skill = el("select");
@@ -953,7 +945,7 @@ function mountRoleActions({
   prompt.setAttribute("aria-label", `${role.id} prompt`);
   prompt.rows = 4;
   prompt.maxLength = 1e4;
-  prompt.placeholder = "Describe the work or constraints for this role\u2026";
+  prompt.placeholder = "Add instructions\u2026";
   promptLabel.append(prompt);
   if (typeof initialDraft?.prompt === "string") prompt.value = initialDraft.prompt;
   if (typeof initialDraft?.feature === "string") change.value = initialDraft.feature;
@@ -965,7 +957,10 @@ function mountRoleActions({
   const result = el("div", "osb-run-result");
   result.setAttribute("role", "status");
   result.setAttribute("aria-live", "polite");
-  body.append(form, connectionText, target, launchHelp, connectionActions, setupHelp, result);
+  const runDetails = el("details", "osb-action-details osb-last-run");
+  const runSummary = el("summary", "", "Last run");
+  runDetails.append(runSummary, result);
+  body.append(form, connectionText, connectionActions, settings, runDetails);
   panel.append(body);
   container.append(panel);
   if (specId && requirement) {
@@ -980,15 +975,13 @@ function mountRoleActions({
     panel.dataset.stage = stage;
     if (externalSelection) {
       selectedTitle.textContent = `${role.id} ${SKILLS[stage]}`;
-      selectedDescription.textContent = HELP[stage];
-      selectedContext.textContent = newRequirement ? "Create an SA requirement, or choose an existing requirement above." : home ? "Choose a requirement before running this automation." : `Requirement: ${requirement?.id || "Unavailable"} \xB7 Role spec: ${specId || "No spec selected"}`;
       const definition = connection?.automations.find((item) => item.role === role.id && item.stage === stage);
       selectedDefinition.replaceChildren();
-      if (definition) selectedDefinition.append(
-        el("p", "osb-automation-name", definition.name),
-        link("Open automation history \u2192", `/automations/${definition.id}`)
-      );
-      else selectedDefinition.append(el("p", "osb-muted", connection ? "Definition is not installed. Connect shared automations." : busy ? "Checking native automation\u2026" : "Connect shared automations to view the native definition."));
+      if (definition) {
+        const history = link("Automation history \u2192", `/automations/${definition.id}`);
+        history.title = definition.name;
+        selectedDefinition.append(history);
+      }
     }
     if (connection) {
       const config = connection.configuration;
@@ -1004,7 +997,7 @@ Workflow resources: ${config.skill_root}`;
     skill.disabled = change.disabled = prompt.disabled = !supportedTarget && !home || dispatching;
     setup.disabled = probe.disabled = busy;
     setup.hidden = Boolean(connection?.ready);
-    setupHelp.hidden = Boolean(connection?.ready);
+    connectionActions.hidden = setup.hidden;
     appLabel.hidden = stage !== "propose" || role.id === "SA" || !appChoices.length;
     application.required = !appLabel.hidden;
     application.disabled = dispatching;
@@ -1021,7 +1014,7 @@ Workflow resources: ${config.skill_root}`;
     specPreview.textContent = newRequirement ? `New spec: SA-${requirementId.value.trim() || "<requirement>"}-${change.value.trim() || "<feature>"}` : home ? "Choose a requirement to preview the new spec name." : `New spec: ${prefix}${change.value.trim() || "<feature>"}`;
     prompt.required = ["propose", "update"].includes(stage);
     promptTitle.textContent = prompt.required ? "Prompt" : "Prompt (optional)";
-    help.textContent = newRequirement && stage === "propose" ? "Describe the requirement and add its impacted repositories. SA creates the contract and hands implementation to the other roles." : home ? "Choose a requirement and a Role spec to run an existing-spec action, or select Propose to create an SA requirement." : !supportsSpecs ? "Load a store with canonical role change folders before running automations." : !supportedTarget ? "The selected spec is missing or does not belong to this role. Choose a current Role spec before running an automation." : stage !== "propose" && !specId ? "Choose an existing Role spec for Update or Apply, or select Propose to add a new spec." : previousRunBlocks() ? last.run_id ? "The previous run is still active or its status has not been confirmed. Use Refresh run status below to check it." : "The previous request has an unknown outcome. Inspect native history before choosing Start another run below." : externalSelection ? "" : HELP[stage];
+    help.textContent = newRequirement && stage === "propose" ? "" : home ? "Choose a requirement and Role spec." : !supportsSpecs ? "Load a store with role specs." : !supportedTarget ? "Choose a valid Role spec." : stage !== "propose" && !specId ? "Choose a Role spec, or use Propose to create one." : previousRunBlocks() ? last.run_id ? "Previous run unresolved. Refresh run status below." : "Request outcome unknown. Check automation history before retrying." : "";
     help.hidden = !help.textContent;
     submit.textContent = `Run ${role.id} ${SKILLS[stage]}`;
     panel.setAttribute("aria-busy", String(busy));
@@ -1040,6 +1033,10 @@ Workflow resources: ${config.skill_root}`;
   }
   function renderLast(message) {
     result.replaceChildren();
+    runDetails.hidden = !last && !message;
+    runDetails.open = Boolean(message || last && (previousRunBlocks() || lastStatus?.status === "FAILED" || lastStatus?.error || lastStatus?.report?.outcome && lastStatus.report.outcome.status !== "completed"));
+    const status = lastStatus?.report?.outcome?.status || lastStatus?.status;
+    runSummary.textContent = !last && message ? "Run error" : status ? `Last run \xB7 ${status.toLowerCase().replaceAll("_", " ")}` : "Last run";
     if (message) result.append(el("p", "osb-run-error", message));
     if (!last) return;
     result.append(
@@ -1092,13 +1089,13 @@ Spec store: ${report.configuration.spec_store}`));
     if (busy || disposed) return;
     busy = true;
     update();
-    connectionText.textContent = action === "setup" ? "Connecting the shared role automations\u2026" : "Checking shared automation connection\u2026";
+    connectionText.textContent = action === "setup" ? "Connecting\u2026" : "Checking connection\u2026";
     try {
       const value = await callRoleAutomation(host, action);
       if (disposed) return;
       connection = value;
       const matches = value.configuration.spec_store === workspace;
-      connectionText.textContent = !matches ? "This store is not the configured automation store. Update role-workflow.json and reconnect." : value.ready ? "Shared connection ready \xB7 all 12 role automations verified." : value.message;
+      connectionText.textContent = !matches ? "This store is not the configured automation store. Update role-workflow.json and reconnect." : value.ready ? "Connected" : value.message;
       if (action === "setup") onSetupComplete?.();
     } catch (error) {
       if (!disposed) {
@@ -1173,7 +1170,9 @@ Spec store: ${report.configuration.spec_store}`));
     remember(attempt);
     busy = dispatching = true;
     update();
-    result.textContent = "Submitting one automation request\u2026";
+    runDetails.hidden = false;
+    runDetails.open = true;
+    result.textContent = "Submitting\u2026";
     try {
       const response = await callRoleAutomation(host, "dispatch", { ...input, automation_id: attempt.automation_id, request_id: attempt.request_id });
       rememberResult(attempt, response.run_id);

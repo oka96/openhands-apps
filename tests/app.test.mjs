@@ -211,7 +211,7 @@ test('role specs show independent progress and exact selectable sources across r
   await settled(); await settled();
   assert.equal(app.all('.osb-role-spec').length, 2);
   assert.equal(app.all('.osb-workflow-workspace form').length, 1);
-  assert.equal(app.all('.osb-role-actions summary, .osb-role-actions details').length, 0);
+  assert.equal(app.query('.osb-workflow-workspace form').closest('details'), null, 'Action form remains visible');
   assert.equal(app.all('[aria-label="Frontend automation"]').length, 0, 'The diagram is the visible automation selector');
   assert.equal(app.query('.osb-completion strong').textContent, '3 of 4 roles complete');
   assert.equal(app.all('.osb-spec-count')[0].textContent, '1 / 2 specs complete');
@@ -827,7 +827,7 @@ for (const descriptor of ROLE_APPS) {
     for (const stage of ['propose', 'update', 'apply']) {
       app.selectAutomation(stage);
       const label = stage[0].toUpperCase() + stage.slice(1);
-      assert.match(app.query('.osb-selected-automation-definition').textContent, new RegExp(`OpenSpec ${descriptor.role} · ${label}`));
+      assert.match(app.query('.osb-selected-automation-definition a').title, new RegExp(`OpenSpec ${descriptor.role} · ${label}`));
       assert.equal(app.button(`Run ${descriptor.role} ${label}`).disabled, !(descriptor.role === 'SA' && stage === 'propose'));
     }
     app.query('.osb-selected-automation-definition a').click();
@@ -1029,7 +1029,7 @@ test('shared setup updates selected automation history without remounting its dr
   app.button('Connect shared automations').click(); await settled();
   assert.equal(app.query('.osb-skill-form'), form, 'Setup must preserve the selected action form');
   assert.equal(app.all('.osb-selected-automation-definition a').length, 1);
-  assert.match(app.query('.osb-selected-automation-definition').textContent, /Frontend · Update/);
+  assert.match(app.query('.osb-selected-automation-definition a').title, /Frontend · Update/);
   assert.equal(app.query('[aria-label="Frontend prompt"]').value, 'Preserve connection setup draft');
   assert.equal(app.query('.osb-workflow-current').dataset.stage, 'update');
   assert.deepEqual(actions, ['probe', 'setup']);

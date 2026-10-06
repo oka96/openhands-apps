@@ -141,6 +141,9 @@ For a role with no specs, choose its **New spec** entry to propose the first fea
 Switching workflow actions, documents or Preview/Source preserves your current
 draft. Source artifacts span the full width below both the canvas and form, and
 expand to their full height.
+The action panel shows the current action, prompt and conversation controls.
+Open **Automation settings** for configuration or **Last run** for a completed
+result. Unresolved runs, blockers and errors stay expanded.
 Supporting work lists and progress are available in disclosures. On narrow
 screens the workflow stacks above the form.
 Use the shared automation connection setup once to install or reconnect the
@@ -278,7 +281,7 @@ Build once, then add each package in **Customize → Apps → Add app**:
 
 Leave Ref and Repository path blank for these local directories. Each manifest
 and self-contained `extension.js` is at its package root. Install and enable all
-five packages at the same release version, currently 0.13.0.
+five packages at the same release version, currently 0.13.1.
 
 Installation leaves the app disabled. Review the source, then choose
 **Enable trusted app**. The app runs inside Canvas and uses its authenticated

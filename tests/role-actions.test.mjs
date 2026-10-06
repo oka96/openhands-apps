@@ -159,7 +159,8 @@ function setup(t, options = {}) {
 
 test('inline role controls default to Apply and automatically probe without connecting or dispatching', async t => {
   const app = setup(t);
-  assert.equal(app.query('details, summary'), null);
+  assert.equal(app.query('form').closest('details'), null, 'Primary actions stay visible');
+  assert.equal(app.query('.osb-automation-target').closest('details').open, false);
   assert.equal(app.query('.osb-role-actions').getAttribute('aria-label'), 'Run OpenSpec automation for SA');
   assert.equal(app.query('.osb-role-actions-body').firstElementChild, app.query('.osb-conversation-handoff'));
   assert.equal(app.container.querySelectorAll('select').length, 2, 'Role spec is supplied by the parent');
@@ -228,9 +229,9 @@ test('invalid Propose and Update inputs cannot dispatch; switching automations u
     assert.ok(app.query('.osb-run-result').textContent.length, 'Show actionable validation feedback');
   }
   app.select('update');
-  assert.match(app.query('.osb-skill-help').textContent, /Revise the selected specification/);
+  assert.equal(app.query('.osb-skill-help').hidden, true);
   app.select('apply');
-  assert.match(app.query('.osb-skill-help').textContent, /Implement the selected spec tasks/);
+  assert.equal(app.query('.osb-skill-help').hidden, true);
   assert.equal(app.query('input').parentElement.hidden, true);
   assert.equal(app.query('textarea').required, false);
 });
@@ -428,12 +429,12 @@ test('the bound sibling spec is immutable and prior history never overrides the 
   assert.equal(app.dispatched()[1].input.stage, 'apply');
 });
 
-test('effective configuration follows Automation and explains the supported entry point', async t => {
+test('effective configuration follows Automation inside collapsed settings', async t => {
   const app = setup(t);
   await app.ready();
   assert.match(app.query('.osb-automation-target').textContent, /Effective settings.*Role: SA.*Automation: Apply.*codex-acp-demo.*1800 seconds.*Workflow resources:/s);
-  assert.match(app.container.textContent, /Native Run now has no requirement context/);
-  assert.match(app.container.textContent, /native profile selector does not override/);
+  assert.equal(app.query('.osb-automation-target').closest('details').open, false);
+  assert.doesNotMatch(app.container.textContent, /Native Run now has no requirement context|native profile selector does not override/);
   app.select('update');
   assert.match(app.query('.osb-automation-target').textContent, /Automation: Update/);
   app.select('propose');
@@ -465,6 +466,7 @@ test('business outcomes preserve lifecycle, original findings, audit details and
     await app.ready(); app.submit(); await eventually(() => app.button('Refresh run status'));
     app.button('Refresh run status').click(); await eventually(() => app.query('.osb-run-status'));
     assert.equal(app.query('.osb-run-status').textContent, `Result: ${label}`);
+    assert.equal(app.query('.osb-last-run').open, kind !== 'completed', 'Only completed output collapses; attention states stay visible');
     assert.equal(app.query('.osb-outcome-summary').textContent, outcome.summary, 'Authored outcome wording remains literal');
     assert.match(app.container.textContent, /Native run:.*Original blocker.*Next: Implement Backend labels first.*Run profile: previous-run-profile/s);
     assert.match(app.query('.osb-automation-target').textContent, /codex-acp-demo/);
@@ -509,7 +511,7 @@ test('legacy metadata stays read-only and empty roles can explicitly propose a c
     const app = setup(child, { requirement: legacy });
     await app.ready(); app.submit(); await settled();
     assert.equal(app.button('Run SA Apply').disabled, true);
-    assert.match(app.query('.osb-skill-help').textContent, /canonical role change/);
+    assert.match(app.query('.osb-skill-help').textContent, /Load a store with role specs/);
     assert.equal(app.dispatched().length, 0);
   });
   await t.test('empty role', async child => {
@@ -519,7 +521,7 @@ test('legacy metadata stays read-only and empty roles can explicitly propose a c
     for (const stage of ['update', 'apply']) {
       app.select(stage); app.fill('No existing spec'); app.submit(); await settled();
       assert.equal(app.button(`Run Backend ${stage === 'update' ? 'Update' : 'Apply'}`).disabled, true);
-      assert.match(app.query('.osb-skill-help').textContent, /Choose an existing Role spec/);
+      assert.match(app.query('.osb-skill-help').textContent, /Choose a Role spec/);
       assert.equal(app.dispatched().length, 0);
     }
     app.select('propose');
@@ -582,7 +584,8 @@ test('connection probes, setup and status checks leave automation and draft inpu
     app.query('input').dispatchEvent(new app.dom.window.Event('input'));
     assert.equal(app.query('input').parentElement.hidden, false);
     assert.equal(app.query('textarea').required, true);
-    assert.match(app.query('.osb-skill-help').textContent, action === 'status' ? /Refresh run status/ : /Create a role specification/);
+    if (action === 'status') assert.match(app.query('.osb-skill-help').textContent, /Refresh run status/);
+    else assert.equal(app.query('.osb-skill-help').hidden, true);
     assert.equal(app.button('Run SA Propose').disabled, true);
     app.submit();
     const input = app.actions.find(item => item.action === action).input;
@@ -602,7 +605,7 @@ test('missing, stale and wrong-role bound targets cannot dispatch any automation
       const app = setup(child, { specId });
       await app.ready();
       assert.equal(app.query('select').disabled, true);
-      assert.match(app.query('.osb-skill-help').textContent, /missing or does not belong/);
+      assert.match(app.query('.osb-skill-help').textContent, /Choose a valid Role spec/);
       for (const stage of STAGES) {
         app.select(stage); app.fill('Do not dispatch stale work', 'new-feature'); app.submit();
         assert.equal(app.button(`Run SA ${stage[0].toUpperCase()}${stage.slice(1)}`).disabled, true);
@@ -764,15 +767,15 @@ test('external automation selection has one authoritative stage and preserves th
     assert.equal(app.query('input'), feature);
     assert.deepEqual(control.getDraft(), { stage, prompt: 'Draft <script> stays literal', feature: 'new-feature' });
     assert.equal(app.query('.osb-selected-automation-title').textContent, `SA ${stage[0].toUpperCase()}${stage.slice(1)}`);
-    assert.equal(app.query('.osb-automation-name').textContent, definition.name);
+    assert.equal(app.query('.osb-selected-automation-definition a').title, definition.name);
     assert.equal(app.query('.osb-selected-automation-definition a').getAttribute('href'), `/automations/${definition.id}`);
     assert.equal(prompt.required, stage !== 'apply');
     assert.equal(feature.parentElement.hidden, stage !== 'propose');
-    assert.ok(app.query('.osb-selected-automation-description').textContent.length);
+    assert.equal(app.query('.osb-selected-automation-description'), null);
   }
   const draft = control.getDraft(); draft.prompt = 'Mutated snapshot';
   assert.equal(control.getDraft().prompt, 'Draft <script> stays literal');
-  assert.match(app.query('.osb-selected-automation-context').textContent, /REQ-004.*SA-REQ-004-first/);
+  assert.equal(app.query('.osb-selected-automation-context'), null);
   app.query('.osb-selected-automation-definition a').click();
   assert.deepEqual(app.navigation, [`/automations/${AUTOMATIONS[1].id}`]);
   assert.equal(app.query('script'), null);
@@ -813,7 +816,7 @@ for (const role of ROLES.filter(role => role !== 'SA')) test(`${role} home is an
     assert.equal(app.query('textarea').disabled, false);
     assert.equal(app.query('input').disabled, false);
     assert.equal(app.button(`Run ${role} ${stage[0].toUpperCase()}${stage.slice(1)}`).disabled, true);
-    assert.match(app.query('.osb-selected-automation-context').textContent, /Choose a requirement/);
+    assert.match(app.query('.osb-skill-help').textContent, /Choose a requirement/);
     if (stage === 'propose') assert.match(app.container.textContent, /Choose a requirement to preview the new spec name/);
     app.submit();
   }
@@ -926,7 +929,7 @@ test('selected automation details never substitute another role or fabricate a m
     automations: AUTOMATIONS.filter(item => !(item.role === 'SA' && item.stage === 'update')),
   }) });
   await app.ready();
-  assert.match(app.query('.osb-selected-automation-definition').textContent, /Definition is not installed/);
+  assert.equal(app.button('Connect shared automations').hidden, false);
   assert.equal(app.query('.osb-selected-automation-definition a'), null);
   app.controller().selectStage('apply');
   assert.equal(app.query('.osb-selected-automation-definition a').getAttribute('href'), `/automations/${AUTOMATIONS.find(item => item.role === 'SA' && item.stage === 'apply').id}`);
